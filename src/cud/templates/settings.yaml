@@ -1,0 +1,29 @@
+model:
+  provider: ollama
+  name: qwen2.5-coder:14b
+  base_url: http://localhost:11434
+  temperature: 0.2
+  compressor_temperature: 0.0
+  context_window: 32768
+compression:
+  threshold_ratio: 0.75
+  max_tool_output_chars: 4000
+  keep_recent_messages: 12
+runtime:
+  max_visible_tools: 24
+  max_tool_calls_per_run: 24
+  require_approval: true
+  mutable_tools:
+    - write_file
+    - edit_file
+    - shell_exec
+    - memory_update
+    - memory_clear
+  enable_subagents: false
+  enable_todo_tools: false
+gateway:
+  provider: discord
+  token: ""
+  mode: bot
+workspace: workspace
+

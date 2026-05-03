@@ -1,0 +1,2 @@
+"""Packaged default agent templates."""
+

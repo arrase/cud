@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cud"
+version = "0.1.0"
+description = "Local multi-agent framework for Ollama, LangGraph, Deep Agents, and Discord."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Cud contributors" }]
+dependencies = [
+  "deepagents>=0.2.0",
+  "discord.py>=2.4.0",
+  "langchain>=1.0.0",
+  "langchain-core>=1.0.0",
+  "langchain-mcp-adapters>=0.1.0",
+  "langchain-ollama>=0.3.0",
+  "langgraph>=1.0.0",
+  "langgraph-checkpoint-sqlite>=2.0.0",
+  "pydantic>=2.8.0",
+  "pyyaml>=6.0.2",
+  "rich>=13.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+]
+
+[project.scripts]
+cud = "cud.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cud"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "/src",
+  "/tests",
+  "/design",
+  "/pyproject.toml",
+  "/README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+

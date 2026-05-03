@@ -1,0 +1,7 @@
+**/.codex
+**/.agents
+**/__pycache__
+**/.venv
+**/.obsidian
+**/design
+**/tests
