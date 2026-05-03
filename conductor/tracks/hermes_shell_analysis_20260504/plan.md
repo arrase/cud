@@ -7,11 +7,11 @@
     - [ ] Document how it streams or returns command outputs to the user.
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Research and Analysis' (d439345) (Protocol in workflow.md)
 
-## Phase 2: Design Adaptation for Cud
+## Phase 2: Design Adaptation for Cud [checkpoint: c197de6]
 - [x] Task: Draft a design proposal to update `src/cud/tools/shell.py`. (1af813d)
     - [ ] Propose a mechanism to allow workspace traversal or configurable bounds.
     - [ ] Propose UX improvements for command execution reporting (progress, errors).
-- [ ] Task: Conductor - User Manual Verification 'Phase 2: Design Adaptation for Cud' (Protocol in workflow.md)
+- [x] Task: Conductor - User Manual Verification 'Phase 2: Design Adaptation for Cud' (c197de6) (Protocol in workflow.md)
 
 ## Phase 3: Implementation
 - [ ] Task: Update the Cud shell tool implementation.
