@@ -1,23 +1,24 @@
-# Cud
+# Cud 🦙
 
-**Cud** is a local multi-agent framework designed to bring autonomous AI agents to your terminal and messaging platforms like Discord. It leverages Ollama for local LLM execution, LangGraph for orchestration, and supports extensible tools via MCP (Model Context Protocol) and Markdown-defined "skills".
+**Cud** (the bolus of food that llamas chew) is a local-first, multi-agent framework designed to "ruminate" on massive context and memory, projecting intelligent responses to your terminal and messaging platforms like Discord.
 
-## Features
+Optimized for **Small Language Models (SLMs)** in the ~15B parameter range, Cud brings autonomous, tool-equipped AI agents to your local machine using **Ollama** and **LangGraph**.
 
-- **Local First**: Prioritizes local execution via Ollama and local storage for agent state and memory.
-- **Multi-Agent Architecture**: Create and manage multiple named agent instances, each with their own configuration, memory (`MEMORY.md`), and isolated workspace.
-- **Platform Gateways**: Connect your agents to external platforms. Currently features a Discord gateway, with planned support for Telegram and Slack.
-- **Daemon Support**: Built-in integration with `systemd` to run your agent gateways as background user services.
-- **Extensible Tooling**: 
-  - **Core Tools**: Filesystem operations, shell execution, and memory management.
-  - **MCP**: Native support for the Model Context Protocol to add external tool servers.
-  - **Skills**: Progressive-disclosure skill discovery allowing you to install tools and instructions directly via Markdown (`SKILL.md`).
+---
 
-## Installation
+## 🌟 Core Principles
+
+- **Local-First & Private**: Your data, prompts, and memory stay on your machine.
+- **Multi-Agent by Design**: Create a fleet of specialized agents, each with its own persona, memory, and workspace.
+- **Transparent & Hackable**: Agent behavior is defined in plain Markdown. No hidden prompts, no black boxes.
+- **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, and the Model Context Protocol (MCP).
+- **Daemon-Ready**: Seamlessly run your agents as background services using `systemd`.
+
+## 🚀 Quick Start
+
+### 1. Installation
 
 Requires Python 3.11+.
-
-Clone the repository and install it (optionally with development dependencies):
 
 ```bash
 git clone https://github.com/your-username/cud.git
@@ -25,70 +26,70 @@ cd cud
 pip install -e .
 ```
 
-*To install test dependencies, use `pip install -e .[dev]`.*
-
-## Quick Start
-
-The main entry point is the `cud` CLI.
+### 2. Create Your First Agent
 
 ```bash
-# Display help
-cud --help
+# Create an agent named "researcher"
+cud agent create researcher
+
+# Configure it to use a specific model (e.g., llama3)
+cud agent config researcher --model llama3
 ```
 
-### 1. Manage Agents
+### 3. Run the Agent (Discord Gateway)
 
 ```bash
-# Create a new agent named "my-agent"
-cud agent create my-agent
+# Setup your Discord token
+cud gateway setup researcher discord --token YOUR_BOT_TOKEN
 
-# List all local agents
-cud agent list
+# Run it in the foreground to test
+cud gateway run researcher --verbose
 
-# Configure the agent to use a specific Ollama model
-cud agent config my-agent --model llama3
+# Or start it as a background service
+cud gateway start researcher
 ```
 
-### 2. Configure Gateways (e.g., Discord)
+---
+
+## 🧠 Key Concepts
+
+### Agents & Workspaces
+Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire "soul":
+- `settings.yaml`: Model parameters and tool configurations.
+- `AGENT.md`: The system prompt—defining its persona and rules.
+- `MEMORY.md`: Long-term memory that the agent can read and update.
+- `history.db`: A SQLite-backed LangGraph checkpointer for conversation state.
+- `skills/`: A directory for custom Markdown-defined abilities.
+
+### Skills (`SKILL.md`)
+Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `skills/` directory, and it instantly gains those capabilities.
+
+### Model Context Protocol (MCP)
+Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:
+```bash
+cud mcp add researcher https://mcp-server.example.com/sse --name search
+```
+
+---
+
+## 🏗️ Architecture
+
+Cud is built on a robust, modular stack:
+- **Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraph) provides the stateful, cyclic reasoning loops.
+- **LLM Engine**: [Ollama](https://ollama.com/) powers the local inference.
+- **Safety**: Built-in **Tool Guardrails** (Circuit Breakers) prevent infinite tool loops and save local compute.
+- **Efficiency**: deterministic message compression ensures agents don't get lost in long conversations.
+
+## 🛠️ Development
 
 ```bash
-# Setup the Discord gateway with your bot token
-cud gateway setup my-agent discord --token YOUR_BOT_TOKEN
+# Install development dependencies
+pip install -e .[dev]
 
-# Run the gateway in the foreground
-cud gateway run my-agent --verbose
-
-# Or start it as a systemd background service
-cud gateway start my-agent
-cud gateway status my-agent
+# Run tests
+pytest
 ```
 
-### 3. Manage Tools & Skills
-
-```bash
-# List available tools for an agent
-cud tools list my-agent
-
-# Install a skill from a local path or URL
-cud tools install my-agent /path/to/skill/dir
-```
-
-### 4. Manage Ollama Engine
-
-```bash
-# Check Ollama engine status
-cud engine status
-
-# Pull a new model
-cud engine pull phi3
-```
-
-## Architecture
-
-- **`src/cud/agent/`**: Core LangGraph runtime, prompt construction, and message compression logic.
-- **`src/cud/gateway/`**: Platform adapters (e.g., `discord_adapter.py`) and background service (`systemd.py`) management.
-- **`src/cud/tools/`**: Built-in tools and the MCP client integration.
-
-## License
+## 📜 License
 
 MIT License.
