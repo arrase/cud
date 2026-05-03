@@ -8,7 +8,7 @@
 - [x] Task: Conductor - User Manual Verification 'Phase 1: Research and Analysis' (d439345) (Protocol in workflow.md)
 
 ## Phase 2: Design Adaptation for Cud
-- [ ] Task: Draft a design proposal to update `src/cud/tools/shell.py`.
+- [x] Task: Draft a design proposal to update `src/cud/tools/shell.py`. (1af813d)
     - [ ] Propose a mechanism to allow workspace traversal or configurable bounds.
     - [ ] Propose UX improvements for command execution reporting (progress, errors).
 - [ ] Task: Conductor - User Manual Verification 'Phase 2: Design Adaptation for Cud' (Protocol in workflow.md)
