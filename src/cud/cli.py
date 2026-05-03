@@ -46,6 +46,8 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--model")
     config.add_argument("--context-window", type=int)
     config.add_argument("--temperature", type=float)
+    config.add_argument("--allow-traversal", action="store_true", default=None)
+    config.add_argument("--no-traversal", action="store_false", dest="allow_traversal")
     config.set_defaults(func=cmd_agent_config)
 
     gateway = sub.add_parser("gateway", help="Manage gateway daemon")
@@ -150,6 +152,8 @@ def cmd_agent_config(args: argparse.Namespace) -> int:
         settings.model.context_window = args.context_window
     if args.temperature is not None:
         settings.model.temperature = args.temperature
+    if args.allow_traversal is not None:
+        settings.runtime.allow_shell_traversal = args.allow_traversal
     save_settings(directory, settings)
     console.print(f"Updated {directory / 'settings.yaml'}")
     return 0

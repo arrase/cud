@@ -102,7 +102,10 @@ class AgentRuntime:
 
         fs = FileSystemTools(self.workspace_dir)
         memory = MemoryStore(self.agent_dir / "MEMORY.md")
-        self.shell = ShellSession(self.workspace_dir)
+        self.shell = ShellSession(
+            self.workspace_dir, 
+            allow_traversal=self.settings.runtime.allow_shell_traversal
+        )
         core_tools = [
             StructuredTool.from_function(fs.ls, name="ls", description="List files inside the agent workspace only."),
             StructuredTool.from_function(fs.read_file, name="read_file", description="Read a workspace UTF-8 file."),
@@ -130,7 +133,10 @@ class AgentRuntime:
 
     def shell_exec(self, command: str) -> str:
         if self.shell is None:
-            self.shell = ShellSession(self.workspace_dir)
+            self.shell = ShellSession(
+                self.workspace_dir,
+                allow_traversal=self.settings.runtime.allow_shell_traversal
+            )
         result = self.shell.execute(command)
         if result.returncode != 0:
             return f"exit={result.returncode}\n{result.output}"

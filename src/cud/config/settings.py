@@ -31,6 +31,7 @@ class RuntimeSettings:
     max_visible_tools: int = 24
     max_tool_calls_per_run: int = 24
     require_approval: bool = True
+    allow_shell_traversal: bool = False
     mutable_tools: list[str] = field(
         default_factory=lambda: ["write_file", "edit_file", "shell_exec", "memory_update", "memory_clear"]
     )
