@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .paths import agent_home, agents_root, validate_agent_name
 
-TEMPLATE_NAMES = ["AGENT.md", "MEMORY.md", "COMPRESSOR.md", "settings.yaml", "mcp.json"]
+TEMPLATE_NAMES = ["AGENT.md", "MEMORY.md", "settings.yaml", "mcp.json"]
 
 
 def create_agent(name: str, *, template: str | None = None, overwrite: bool = False) -> Path:
