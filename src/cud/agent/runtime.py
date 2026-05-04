@@ -213,20 +213,35 @@ class AgentRuntime:
 
     def clear_history(self, *, thread_id: str | None = None) -> str:
         thread = thread_id or self.thread_id
+        
+        try:
+            from langgraph.checkpoint.sqlite import SqliteSaver
+        except ImportError:
+            return "LangGraph dependencies not installed."
+            
         db_path = self.agent_dir / "history.db"
         if not db_path.exists():
             return "History is already empty."
             
-        import sqlite3
         try:
-            with sqlite3.connect(db_path) as conn:
-                for table in ["checkpoints", "checkpoint_writes", "checkpoint_blobs"]:
-                    try:
-                        conn.execute(f"DELETE FROM {table} WHERE thread_id = ?", (thread,))
-                    except sqlite3.OperationalError:
-                        pass
+            if hasattr(SqliteSaver, "from_conn_string"):
+                with SqliteSaver.from_conn_string(str(db_path)) as saver:
+                    if hasattr(saver, "delete_thread"):
+                        saver.delete_thread(thread)
+                    else:
+                        return "LangGraph version does not support deleting threads natively."
+            else:
+                saver = SqliteSaver(str(db_path))
+                if hasattr(saver, "delete_thread"):
+                    saver.delete_thread(thread)
+                else:
+                    return "LangGraph version does not support deleting threads natively."
+                    
         except Exception as exc:
             return f"Failed to clear history: {exc}"
+            
+        # Rebuild graph to ensure it picks up the clean state if it caches saver
+        self.graph = self._build_graph()
         return "History cleared."
 
     def close(self) -> None:
