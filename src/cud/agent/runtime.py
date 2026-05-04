@@ -211,6 +211,24 @@ class AgentRuntime:
         self.graph.update_state(config, {"messages": trimmed})
         return "Last exchange removed."
 
+    def clear_history(self, *, thread_id: str | None = None) -> str:
+        thread = thread_id or self.thread_id
+        db_path = self.agent_dir / "history.db"
+        if not db_path.exists():
+            return "History is already empty."
+            
+        import sqlite3
+        try:
+            with sqlite3.connect(db_path) as conn:
+                for table in ["checkpoints", "checkpoint_writes", "checkpoint_blobs"]:
+                    try:
+                        conn.execute(f"DELETE FROM {table} WHERE thread_id = ?", (thread,))
+                    except sqlite3.OperationalError:
+                        pass
+        except Exception as exc:
+            return f"Failed to clear history: {exc}"
+        return "History cleared."
+
     def close(self) -> None:
         if self.shell is not None:
             self.shell.close()

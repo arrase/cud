@@ -81,11 +81,14 @@ class DiscordGateway:
         @bot.tree.command(name="new", description="Start a new Cud session in this Discord thread.")
         async def new_session(interaction: Any) -> None:
             thread_id = discord_thread_id(interaction.channel)
+            state = self.session(thread_id)
+            await asyncio.to_thread(state.runtime.clear_history, thread_id=thread_id)
+            
             old = self.sessions.pop(thread_id, None)
             if old:
                 old.runtime.close()
             self.session(thread_id)
-            await interaction.response.send_message("New Cud session started.", ephemeral=True)
+            await interaction.response.send_message("New Cud session started. History cleared.", ephemeral=True)
 
         @bot.tree.command(name="model", description="Temporarily switch this agent's configured model.")
         @app_commands.describe(model_name="Ollama model id")
