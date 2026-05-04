@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
 
 @dataclass(slots=True)
 class MCPConfig:
@@ -71,10 +73,6 @@ async def load_langchain_mcp_tools(agent_dir: Path, max_tools: int) -> list[Any]
     config = load_mcp_config(agent_dir)
     if not config.servers:
         return []
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-    except ImportError as exc:  # pragma: no cover - depends on optional package
-        raise RuntimeError("langchain-mcp-adapters is required to load MCP tools") from exc
 
     client = MultiServerMCPClient(config.servers)
     tools = await client.get_tools()

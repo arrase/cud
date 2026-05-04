@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import discord
+from discord import app_commands
+from discord.ext import commands
+
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings, save_settings
@@ -44,13 +48,6 @@ class DiscordGateway:
         return state
 
     async def run(self) -> None:
-        try:
-            import discord
-            from discord import app_commands
-            from discord.ext import commands
-        except ImportError as exc:
-            raise RuntimeError("discord.py is required for `cud gateway run`") from exc
-
         intents = discord.Intents.default()
         intents.message_content = True
         bot = commands.Bot(command_prefix="!cud ", intents=intents)
