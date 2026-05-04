@@ -1,0 +1,8 @@
+{
+  "track_id": "hermes_shell_analysis_20260504",
+  "type": "feature",
+  "status": "new",
+  "created_at": "2026-05-04T12:00:00Z",
+  "updated_at": "2026-05-04T12:00:00Z",
+  "description": "vamos a analizar como hermes-agent maneja la ejecucuion de comando de shell por parte del agente y como informa al usurio y como gestiona en que directorio esta ya que nosotros ahora estamos restringidos al workspace ya que el agente me dice cosas como 'No puedo listar los archivos de /home/arrase porque esa ruta está fuera del espacio de trabajo disponible...'. El codigo de hermes esta en ../hermes-agent. Hay que entender como hacen ellos las cosas y como lo podemos adaptar a nuestra implementacion."
+}
