@@ -10,15 +10,6 @@ from cud.config.settings import Settings
 from cud.tools.mcp import load_mcp_config, render_mcp_summary
 from cud.tools.skills import discover_skills, render_skill_index
 
-CUD_RULES = """\
-## Cud Runtime Rules
-
-- Use native tool calls only; do not emit ad-hoc JSON for tools.
-- Keep tool use focused and stop if repeated calls do not change the result.
-- Memory writes update MEMORY.md but do not refresh this system prompt until reload or compaction.
-- Prefer concise answers and cite local file paths when local files matter.
-"""
-
 
 @dataclass(frozen=True, slots=True)
 class PromptSnapshot:
@@ -36,7 +27,6 @@ def build_system_prompt(agent_dir: Path, settings: Settings) -> PromptSnapshot:
         [
             "# Agent Instructions",
             agent_text.strip(),
-            CUD_RULES.strip(),
             "# Long-Term Memory Snapshot",
             memory_text.strip() or "No memory.",
             "# Skills Index",
