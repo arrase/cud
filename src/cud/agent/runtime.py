@@ -15,7 +15,6 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
-from langchain.agents.middleware import SummarizationMiddleware
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
 from cud.tools.filesystem import FileSystemTools
@@ -63,6 +62,7 @@ class AgentRuntime:
             base_url=self.settings.model.base_url,
             temperature=self.settings.model.temperature,
             num_ctx=self.settings.model.context_window,
+            profile={"max_input_tokens": self.settings.model.context_window},
         )
         tools = self._build_langchain_tools()
         checkpointer = self._sqlite_checkpointer()
@@ -73,13 +73,7 @@ class AgentRuntime:
             "model": model,
             "tools": tools,
             "system_prompt": self.prompt.text,
-            "middleware": (
-                SummarizationMiddleware(
-                    model=model,
-                    trigger=("fraction", self.settings.compression.threshold_ratio),
-                    keep=("messages", self.settings.compression.keep_recent_messages),
-                ),
-            ),
+            "middleware": (),
             "subagents": [] if not self.settings.runtime.enable_subagents else None,
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
