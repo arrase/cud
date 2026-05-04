@@ -120,11 +120,21 @@ class AgentRuntime:
                 description="Update MEMORY.md.",
             ),
             StructuredTool.from_function(memory.clear, name="memory_clear", description="Clear MEMORY.md."),
+            StructuredTool.from_function(self.activate_skill, name="activate_skill", description="Read the full instructions of a specific skill by name."),
         ]
         mcp_tools = _run_async_sync(
             load_langchain_mcp_tools(self.agent_dir, self.settings.runtime.max_visible_tools)
         )
         return (core_tools + mcp_tools)[: self.settings.runtime.max_visible_tools]
+
+    def activate_skill(self, name: str) -> str:
+        from cud.tools.skills import discover_skills, parse_skill_file
+        skills = discover_skills(self.agent_dir / "skills")
+        for skill in skills:
+            if skill.name == name:
+                _, body = parse_skill_file(skill.path)
+                return f"<activated_skill>\n<instructions>\n{body}\n</instructions>\n</activated_skill>"
+        return f"Skill '{name}' not found."
 
     def shell_exec(self, command: str) -> str:
         if self.shell is None:
