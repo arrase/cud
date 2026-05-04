@@ -21,7 +21,6 @@ from cud.config.paths import agent_home
 from cud.config.settings import load_settings, save_settings
 from cud.gateway.progress import ProgressBubble
 from cud.gateway.threading import discord_thread_id
-from cud.tools.memory import MemoryStore
 
 
 @dataclass(slots=True)
@@ -180,12 +179,20 @@ class DiscordGateway:
 
         @memory_group.command(name="view", description="View MEMORY.md.")
         async def memory_view(interaction: Any) -> None:
-            content = MemoryStore(self.agent_dir / "MEMORY.md").read()
-            await interaction.response.send_message(content[:1900] or "Memory is empty.", ephemeral=True)
+            # We use a standard file read for the view command if we want to bypass the runtime
+            path = self.agent_dir / "MEMORY.md"
+            content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+            await interaction.response.send_message(content[:1900], ephemeral=True)
 
         @memory_group.command(name="clear", description="Clear MEMORY.md.")
         async def memory_clear(interaction: Any) -> None:
-            MemoryStore(self.agent_dir / "MEMORY.md").clear()
+            # We can use the runtime's clear_history if intended, 
+            # but memory.clear was specifically for MEMORY.md.
+            # Since custom tools are gone, we'll just clear the file directly or 
+            # call a runtime method if we added one for middleware.
+            # For now, direct file access is safest for this specific gateway command.
+            path = self.agent_dir / "MEMORY.md"
+            path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
             self._reload_sessions()
             await interaction.response.send_message("Memory cleared.", ephemeral=True)
 

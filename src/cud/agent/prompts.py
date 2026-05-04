@@ -7,8 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cud.config.settings import Settings
-from cud.tools.mcp import load_mcp_config, render_mcp_summary
-from cud.tools.skills import discover_skills, render_skill_index
+from cud.mcp.mcp import load_mcp_config, render_mcp_summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +20,6 @@ class PromptSnapshot:
 def build_system_prompt(agent_dir: Path, settings: Settings) -> PromptSnapshot:
     agent_text = _read_or_empty(agent_dir / "AGENT.md")
     memory_text = _read_or_empty(agent_dir / "MEMORY.md")
-    skill_index = render_skill_index(discover_skills(agent_dir / "skills"))
     mcp_summary = render_mcp_summary(load_mcp_config(agent_dir), settings.runtime.max_visible_tools)
     text = "\n\n".join(
         [
@@ -29,8 +27,6 @@ def build_system_prompt(agent_dir: Path, settings: Settings) -> PromptSnapshot:
             agent_text.strip(),
             "# Long-Term Memory Snapshot",
             memory_text.strip() or "No memory.",
-            "# Skills Index",
-            skill_index,
             "# MCP Summary",
             mcp_summary,
         ]
@@ -50,4 +46,3 @@ def _read_or_empty(path: Path) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
-

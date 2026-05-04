@@ -16,7 +16,7 @@ runtime:
   mutable_tools:
     - write_file
     - edit_file
-    - shell_exec
+    - execute
     - memory_update
     - memory_clear
 gateway:

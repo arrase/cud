@@ -10,17 +10,23 @@ from pathlib import Path
 from typing import Any
 
 from deepagents import create_deep_agent
+from deepagents.middleware import (
+    FilesystemMiddleware,
+    MemoryMiddleware,
+    SkillsMiddleware,
+)
 from langchain_core.tools import StructuredTool
 from langchain_ollama import ChatOllama
+from langchain.agents.middleware import (
+    ShellToolMiddleware,
+    HostExecutionPolicy,
+)
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
-from cud.tools.filesystem import FileSystemTools
-from cud.tools.mcp import load_langchain_mcp_tools
-from cud.tools.memory import MemoryStore
-from cud.tools.shell import ShellSession
+from cud.mcp.mcp import load_langchain_mcp_tools
 
 
 @dataclass(slots=True)
@@ -38,7 +44,6 @@ class AgentRuntime:
     settings: Settings = field(init=False)
     prompt: PromptSnapshot = field(init=False)
     graph: Any = field(default=None, init=False, repr=False)
-    shell: ShellSession | None = field(default=None, init=False, repr=False)
     _exit_stack: contextlib.ExitStack = field(default_factory=contextlib.ExitStack, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -64,16 +69,29 @@ class AgentRuntime:
             num_ctx=self.settings.model.context_window,
             profile={"max_input_tokens": self.settings.model.context_window},
         )
-        tools = self._build_langchain_tools()
+        
+        mcp_tools = self._build_mcp_tools()
         checkpointer = self._sqlite_checkpointer()
+        
         interrupt_on = None
         if self.settings.runtime.require_approval and not self.yolo:
             interrupt_on = {name: True for name in self.settings.runtime.mutable_tools}
+
+        middleware = [
+            FilesystemMiddleware(workspace_root=self.workspace_dir),
+            ShellToolMiddleware(
+                workspace_root=self.workspace_dir,
+                execution_policy=HostExecutionPolicy(),
+            ),
+            MemoryMiddleware(memory_path=self.agent_dir / "MEMORY.md"),
+            SkillsMiddleware(skills_dir=self.agent_dir / "skills"),
+        ]
+
         kwargs: dict[str, Any] = {
             "model": model,
-            "tools": tools,
+            "tools": mcp_tools,
             "system_prompt": self.prompt.text,
-            "middleware": (),
+            "middleware": middleware,
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
             "name": f"cud-{self.agent_dir.name}",
@@ -89,63 +107,11 @@ class AgentRuntime:
             return saver
         return SqliteSaver(str(db_path))
 
-    def _build_langchain_tools(self) -> list[Any]:
-        allow_trav = self.settings.runtime.allow_shell_traversal
-        fs = FileSystemTools(self.workspace_dir, allow_traversal=allow_trav)
-        memory = MemoryStore(self.agent_dir / "MEMORY.md")
-        self.shell = ShellSession(
-            self.workspace_dir, 
-            allow_traversal=allow_trav
-        )
-        
-        scope_desc = "anywhere on the system" if allow_trav else "inside the agent workspace only"
-        scope_prefix = "system" if allow_trav else "workspace"
-
-        core_tools = [
-            StructuredTool.from_function(fs.ls, name="ls", description=f"List files {scope_desc}."),
-            StructuredTool.from_function(fs.read_file, name="read_file", description=f"Read a {scope_prefix} UTF-8 file."),
-            StructuredTool.from_function(fs.write_file, name="write_file", description=f"Write a {scope_prefix} UTF-8 file."),
-            StructuredTool.from_function(fs.edit_file, name="edit_file", description=f"Replace text in a {scope_prefix} file."),
-            StructuredTool.from_function(fs.glob, name="glob", description=f"Find files by glob {scope_desc}."),
-            StructuredTool.from_function(fs.grep, name="grep", description=f"Search file contents {scope_desc}."),
-            StructuredTool.from_function(
-                lambda command: self.shell_exec(command),
-                name="shell_exec",
-                description=f"Run shell commands, including commands for paths {scope_desc}.",
-            ),
-            StructuredTool.from_function(memory.read, name="memory_read", description="Read long-term memory."),
-            StructuredTool.from_function(
-                lambda content, mode="append": memory.update(content, mode=mode),
-                name="memory_update",
-                description="Update MEMORY.md.",
-            ),
-            StructuredTool.from_function(memory.clear, name="memory_clear", description="Clear MEMORY.md."),
-            StructuredTool.from_function(self.activate_skill, name="activate_skill", description="Read the full instructions of a specific skill by name."),
-        ]
+    def _build_mcp_tools(self) -> list[Any]:
         mcp_tools = _run_async_sync(
             load_langchain_mcp_tools(self.agent_dir, self.settings.runtime.max_visible_tools)
         )
-        return (core_tools + mcp_tools)[: self.settings.runtime.max_visible_tools]
-
-    def activate_skill(self, name: str) -> str:
-        from cud.tools.skills import discover_skills, parse_skill_file
-        skills = discover_skills(self.agent_dir / "skills")
-        for skill in skills:
-            if skill.name == name:
-                _, body = parse_skill_file(skill.path)
-                return f"<activated_skill>\n<instructions>\n{body}\n</instructions>\n</activated_skill>"
-        return f"Skill '{name}' not found."
-
-    def shell_exec(self, command: str) -> str:
-        if self.shell is None:
-            self.shell = ShellSession(
-                self.workspace_dir,
-                allow_traversal=self.settings.runtime.allow_shell_traversal
-            )
-        result = self.shell.execute(command)
-        if result.returncode != 0:
-            return f"exit={result.returncode}\n{result.output}"
-        return result.output
+        return mcp_tools[: self.settings.runtime.max_visible_tools]
 
     def invoke(self, message: str, *, thread_id: str | None = None) -> RuntimeResponse:
         thread = thread_id or self.thread_id
