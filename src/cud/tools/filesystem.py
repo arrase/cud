@@ -10,6 +10,7 @@ from pathlib import Path
 @dataclass(slots=True)
 class FileSystemTools:
     root: Path
+    allow_traversal: bool = False
 
     def __post_init__(self) -> None:
         self.root = self.root.resolve()
@@ -17,7 +18,7 @@ class FileSystemTools:
 
     def resolve(self, path: str | Path) -> Path:
         candidate = (self.root / path).resolve() if not Path(path).is_absolute() else Path(path).resolve()
-        if candidate != self.root and self.root not in candidate.parents:
+        if not self.allow_traversal and candidate != self.root and self.root not in candidate.parents:
             raise PermissionError(f"path is outside workspace: {path}")
         return candidate
 

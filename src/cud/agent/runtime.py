@@ -100,23 +100,28 @@ class AgentRuntime:
         except ImportError:
             return []
 
-        fs = FileSystemTools(self.workspace_dir)
+        allow_trav = self.settings.runtime.allow_shell_traversal
+        fs = FileSystemTools(self.workspace_dir, allow_traversal=allow_trav)
         memory = MemoryStore(self.agent_dir / "MEMORY.md")
         self.shell = ShellSession(
             self.workspace_dir, 
-            allow_traversal=self.settings.runtime.allow_shell_traversal
+            allow_traversal=allow_trav
         )
+        
+        scope_desc = "anywhere on the system" if allow_trav else "inside the agent workspace only"
+        scope_prefix = "system" if allow_trav else "workspace"
+
         core_tools = [
-            StructuredTool.from_function(fs.ls, name="ls", description="List files inside the agent workspace only."),
-            StructuredTool.from_function(fs.read_file, name="read_file", description="Read a workspace UTF-8 file."),
-            StructuredTool.from_function(fs.write_file, name="write_file", description="Write a workspace UTF-8 file."),
-            StructuredTool.from_function(fs.edit_file, name="edit_file", description="Replace text in a workspace file."),
-            StructuredTool.from_function(fs.glob, name="glob", description="Find workspace files by glob."),
-            StructuredTool.from_function(fs.grep, name="grep", description="Search workspace file contents."),
+            StructuredTool.from_function(fs.ls, name="ls", description=f"List files {scope_desc}."),
+            StructuredTool.from_function(fs.read_file, name="read_file", description=f"Read a {scope_prefix} UTF-8 file."),
+            StructuredTool.from_function(fs.write_file, name="write_file", description=f"Write a {scope_prefix} UTF-8 file."),
+            StructuredTool.from_function(fs.edit_file, name="edit_file", description=f"Replace text in a {scope_prefix} file."),
+            StructuredTool.from_function(fs.glob, name="glob", description="Find workspace files by glob. (Searches workspace only)"),
+            StructuredTool.from_function(fs.grep, name="grep", description="Search workspace file contents. (Searches workspace only)"),
             StructuredTool.from_function(
                 lambda command: self.shell_exec(command),
                 name="shell_exec",
-                description="Run shell commands, including commands for paths outside the workspace.",
+                description=f"Run shell commands, including commands for paths {scope_desc}.",
             ),
             StructuredTool.from_function(memory.read, name="memory_read", description="Read long-term memory."),
             StructuredTool.from_function(
