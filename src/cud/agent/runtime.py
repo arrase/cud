@@ -15,7 +15,7 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
-from cud.agent.compression import CompactionResult, compact_messages
+from langchain.agents.middleware import SummarizationMiddleware
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
 from cud.tools.filesystem import FileSystemTools
@@ -73,7 +73,13 @@ class AgentRuntime:
             "model": model,
             "tools": tools,
             "system_prompt": self.prompt.text,
-            "middleware": (),
+            "middleware": (
+                SummarizationMiddleware(
+                    model=model,
+                    trigger=("fraction", self.settings.compression.threshold_ratio),
+                    keep=("messages", self.settings.compression.keep_recent_messages),
+                ),
+            ),
             "subagents": [] if not self.settings.runtime.enable_subagents else None,
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
@@ -168,21 +174,6 @@ class AgentRuntime:
         config = {"configurable": {"thread_id": thread_id or self.thread_id}}
         raw = self.graph.invoke(Command(resume={"decisions": [decision]}), config)
         return _response_from_raw(raw)
-
-    def compress(
-        self,
-        messages: list[Any],
-        *,
-        focus: str | None = None,
-    ) -> CompactionResult:
-        return compact_messages(
-            messages,
-            context_window=self.settings.model.context_window,
-            threshold_ratio=self.settings.compression.threshold_ratio,
-            keep_recent_messages=self.settings.compression.keep_recent_messages,
-            max_tool_output_chars=self.settings.compression.max_tool_output_chars,
-            focus=focus,
-        )
 
     def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
         if self.graph is None or not hasattr(self.graph, "get_state") or not hasattr(self.graph, "update_state"):
