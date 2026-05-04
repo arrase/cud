@@ -46,6 +46,20 @@ def install_unit(agent: str) -> Path:
     return path
 
 
+def stop_service(agent: str) -> subprocess.CompletedProcess[str]:
+    return systemctl_user("stop", service_name(agent))
+
+
+def disable_service(agent: str) -> subprocess.CompletedProcess[str]:
+    return systemctl_user("disable", service_name(agent))
+
+
+def remove_unit(agent: str) -> None:
+    path = unit_path(agent)
+    if path.exists():
+        path.unlink()
+
+
 def systemd_available() -> bool:
     return shutil.which("systemctl") is not None
 
