@@ -69,8 +69,9 @@ class AgentRuntime:
         if self.settings.runtime.require_approval and not self.yolo:
             interrupt_on = {name: True for name in self.settings.runtime.mutable_tools}
 
-        default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=True)
-        agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=True)
+        virtual_mode = not self.settings.runtime.allow_traversal
+        default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=virtual_mode)
+        agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=virtual_mode)
         
         backend = CompositeBackend(
             default=default_backend,

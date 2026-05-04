@@ -163,7 +163,7 @@ def cmd_agent_config(args: argparse.Namespace) -> int:
     if args.temperature is not None:
         settings.model.temperature = args.temperature
     if args.allow_traversal is not None:
-        settings.runtime.allow_shell_traversal = args.allow_traversal
+        settings.runtime.allow_traversal = args.allow_traversal
     save_settings(directory, settings)
     console.print(f"Updated {directory / 'settings.yaml'}")
     return 0

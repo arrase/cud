@@ -13,6 +13,7 @@ runtime:
   max_visible_tools: 24
   max_tool_calls_per_run: 24
   require_approval: true
+  allow_traversal: true
   mutable_tools:
     - write_file
     - edit_file
