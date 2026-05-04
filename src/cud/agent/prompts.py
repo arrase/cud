@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cud.config.settings import Settings
-from cud.mcp.mcp import load_mcp_config, render_mcp_summary
+from cud.tools.mcp import load_mcp_config, render_mcp_summary
 
 
 @dataclass(frozen=True, slots=True)

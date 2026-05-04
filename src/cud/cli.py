@@ -228,7 +228,7 @@ def cmd_tools_list(args: argparse.Namespace) -> int:
         "edit_file",
         "glob",
         "grep",
-        "shell_exec",
+        "execute",
         "memory_read",
         "memory_update",
         "memory_clear",

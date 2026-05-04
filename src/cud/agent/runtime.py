@@ -26,7 +26,7 @@ from langgraph.types import Command
 
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
-from cud.mcp.mcp import load_langchain_mcp_tools
+from cud.tools.mcp import load_langchain_mcp_tools
 
 
 @dataclass(slots=True)
