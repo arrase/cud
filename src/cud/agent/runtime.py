@@ -18,6 +18,7 @@ from langgraph.types import Command
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
 from cud.tools.mcp import load_langchain_mcp_tools
+from deepagents.middleware.summarization import create_summarization_tool_middleware
 
 
 @dataclass(slots=True)
@@ -88,6 +89,7 @@ class AgentRuntime:
             "skills": ["/agent/skills/"],
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
+            "middleware": [create_summarization_tool_middleware(model, backend)],
             "name": f"cud-{self.agent_dir.name}",
         }
         return create_deep_agent(**{key: value for key, value in kwargs.items() if value is not None})

@@ -15,15 +15,7 @@ class ModelSettings:
     name: str = "qwen2.5-coder:14b"
     base_url: str = "http://localhost:11434"
     temperature: float = 0.2
-    compressor_temperature: float = 0.0
     context_window: int = 32768
-
-
-@dataclass(slots=True)
-class CompressionSettings:
-    threshold_ratio: float = 0.75
-    max_tool_output_chars: int = 4000
-    keep_recent_messages: int = 12
 
 
 @dataclass(slots=True)
@@ -46,7 +38,6 @@ class GatewaySettings:
 @dataclass(slots=True)
 class Settings:
     model: ModelSettings = field(default_factory=ModelSettings)
-    compression: CompressionSettings = field(default_factory=CompressionSettings)
     runtime: RuntimeSettings = field(default_factory=RuntimeSettings)
     gateway: GatewaySettings = field(default_factory=GatewaySettings)
     workspace: str = "workspace"
@@ -56,7 +47,6 @@ class Settings:
         raw = raw or {}
         return cls(
             model=_dataclass_from_dict(ModelSettings, raw.get("model")),
-            compression=_dataclass_from_dict(CompressionSettings, raw.get("compression")),
             runtime=_dataclass_from_dict(RuntimeSettings, raw.get("runtime")),
             gateway=_dataclass_from_dict(GatewaySettings, raw.get("gateway")),
             workspace=str(raw.get("workspace", "workspace")),
@@ -98,6 +88,4 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.name is required")
     if settings.model.context_window <= 0:
         raise ValueError("model.context_window must be positive")
-    if not 0 < settings.compression.threshold_ratio <= 1:
-        raise ValueError("compression.threshold_ratio must be in (0, 1]")
 

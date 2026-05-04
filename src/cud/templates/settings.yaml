@@ -3,12 +3,7 @@ model:
   name: gemma4:e4b
   base_url: http://localhost:11434
   temperature: 0.2
-  compressor_temperature: 0.0
   context_window: 32768
-compression:
-  threshold_ratio: 0.75
-  max_tool_output_chars: 4000
-  keep_recent_messages: 12
 runtime:
   max_tool_calls_per_run: 24
   require_approval: true
