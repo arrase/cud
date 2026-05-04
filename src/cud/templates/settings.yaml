@@ -19,8 +19,6 @@ runtime:
     - shell_exec
     - memory_update
     - memory_clear
-  enable_subagents: false
-  enable_todo_tools: false
 gateway:
   provider: discord
   token: ""

@@ -74,7 +74,6 @@ class AgentRuntime:
             "tools": tools,
             "system_prompt": self.prompt.text,
             "middleware": (),
-            "subagents": [] if not self.settings.runtime.enable_subagents else None,
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
             "name": f"cud-{self.agent_dir.name}",

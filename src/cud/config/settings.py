@@ -35,8 +35,6 @@ class RuntimeSettings:
     mutable_tools: list[str] = field(
         default_factory=lambda: ["write_file", "edit_file", "shell_exec", "memory_update", "memory_clear"]
     )
-    enable_subagents: bool = False
-    enable_todo_tools: bool = False
 
 
 @dataclass(slots=True)
