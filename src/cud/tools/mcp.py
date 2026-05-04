@@ -48,18 +48,6 @@ def filter_tool_names(tool_names: list[str], config: MCPConfig) -> list[str]:
     return names
 
 
-def render_mcp_summary(config: MCPConfig) -> str:
-    if not config.servers:
-        return "No MCP servers configured."
-    server_names = ", ".join(sorted(config.servers))
-    filters = []
-    if config.allowed_tools:
-        filters.append(f"allowedTools={len(config.allowed_tools)}")
-    if config.disabled_tools:
-        filters.append(f"disabledTools={len(config.disabled_tools)}")
-    return f"Servers: {server_names}. Filters: {', '.join(filters) or 'none'}."
-
-
 async def load_langchain_mcp_tools(agent_dir: Path) -> list[Any]:
     """Load MCP tools through langchain-mcp-adapters when installed.
 

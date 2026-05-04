@@ -14,7 +14,6 @@ from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellB
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
 from cud.tools.mcp import load_langchain_mcp_tools
 from deepagents.middleware.summarization import create_summarization_tool_middleware
@@ -31,7 +30,7 @@ class AgentRuntime:
     agent_dir: Path
     thread_id: str = "default"
     settings: Settings = field(init=False)
-    prompt: PromptSnapshot = field(init=False)
+    prompt: str = field(init=False)
     graph: Any = field(default=None, init=False, repr=False)
     _exit_stack: contextlib.ExitStack = field(default_factory=contextlib.ExitStack, init=False, repr=False)
 
@@ -47,7 +46,8 @@ class AgentRuntime:
         self._exit_stack.close()
         self._exit_stack = contextlib.ExitStack()
         self.settings = load_settings(self.agent_dir)
-        self.prompt = build_system_prompt(self.agent_dir, self.settings)
+        agent_md = self.agent_dir / "AGENT.md"
+        self.prompt = agent_md.read_text(encoding="utf-8") if agent_md.exists() else ""
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
@@ -76,7 +76,7 @@ class AgentRuntime:
         kwargs: dict[str, Any] = {
             "model": model,
             "tools": mcp_tools,
-            "system_prompt": self.prompt.text,
+            "system_prompt": self.prompt,
             "backend": backend,
             "memory": ["/agent/MEMORY.md"],
             "skills": ["/agent/skills/"],
