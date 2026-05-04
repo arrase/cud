@@ -138,8 +138,18 @@ def cmd_agent_delete(args: argparse.Namespace) -> int:
     if not args.yes:
         console.print("[red]Refusing to delete without --yes[/red]")
         return 2
+
+    if systemd.systemd_available():
+        console.print(f"Stopping service for [bold]{args.name}[/bold]...")
+        systemd.stop_service(args.name)
+        console.print(f"Disabling service for [bold]{args.name}[/bold]...")
+        systemd.disable_service(args.name)
+        console.print(f"Removing systemd unit for [bold]{args.name}[/bold]...")
+        systemd.remove_unit(args.name)
+        systemd.systemctl_user("daemon-reload")
+
     path = delete_agent(args.name, yes=True)
-    console.print(f"Deleted {path}")
+    console.print(f"Deleted agent directory: [bold]{path}[/bold]")
     return 0
 
 
