@@ -21,11 +21,7 @@ class ModelSettings:
 @dataclass(slots=True)
 class RuntimeSettings:
     max_tool_calls_per_run: int = 24
-    require_approval: bool = True
     allow_traversal: bool = True
-    mutable_tools: list[str] = field(
-        default_factory=lambda: ["write_file", "edit_file", "execute", "memory_update", "memory_clear"]
-    )
 
 
 @dataclass(slots=True)

@@ -73,9 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     tools = sub.add_parser("tools", help="Manage tools")
     tools_sub = tools.add_subparsers(dest="tools_command", required=True)
-    tools_list = tools_sub.add_parser("list", help="List built-in and skill tools")
-    tools_list.add_argument("agent")
-    tools_list.set_defaults(func=cmd_tools_list)
     tools_install = tools_sub.add_parser("install", help="Install a skill from a local path")
     tools_install.add_argument("agent")
     tools_install.add_argument("path")
@@ -215,33 +212,6 @@ def cmd_gateway_status(args: argparse.Namespace) -> int:
     console.print(status.stdout or status.stderr)
     console.print(logs.stdout or logs.stderr)
     return 0 if status.returncode in (0, 3) else status.returncode
-
-
-def cmd_tools_list(args: argparse.Namespace) -> int:
-    directory = agent_home(args.agent)
-    settings = load_settings(directory)
-    table = Table("Tool", "Source")
-    for name in [
-        "ls",
-        "read_file",
-        "write_file",
-        "edit_file",
-        "glob",
-        "grep",
-        "execute",
-        "memory_read",
-        "memory_update",
-        "memory_clear",
-    ]:
-        table.add_row(name, "core")
-    for card in discover_skills(directory / "skills"):
-        table.add_row(card.name, "skill")
-    mcp = load_mcp_config(directory)
-    for name in sorted(mcp.allowed_tools):
-        table.add_row(name, "mcp allowed")
-    console.print(table)
-    return 0
-
 
 def cmd_tools_install(args: argparse.Namespace) -> int:
     directory = agent_home(args.agent)

@@ -13,7 +13,6 @@ from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
-from langgraph.types import Command
 
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
@@ -25,14 +24,12 @@ from deepagents.middleware.summarization import create_summarization_tool_middle
 class RuntimeResponse:
     content: str
     raw: Any = None
-    interrupted: bool = False
 
 
 @dataclass(slots=True)
 class AgentRuntime:
     agent_dir: Path
     thread_id: str = "default"
-    yolo: bool = False
     settings: Settings = field(init=False)
     prompt: PromptSnapshot = field(init=False)
     graph: Any = field(default=None, init=False, repr=False)
@@ -64,10 +61,6 @@ class AgentRuntime:
         
         mcp_tools = self._build_mcp_tools()
         checkpointer = self._sqlite_checkpointer()
-        
-        interrupt_on = None
-        if self.settings.runtime.require_approval and not self.yolo:
-            interrupt_on = {name: True for name in self.settings.runtime.mutable_tools}
 
         virtual_mode = not self.settings.runtime.allow_traversal
         default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=virtual_mode)
@@ -88,7 +81,6 @@ class AgentRuntime:
             "memory": ["/agent/MEMORY.md"],
             "skills": ["/agent/skills/"],
             "checkpointer": checkpointer,
-            "interrupt_on": interrupt_on,
             "middleware": [create_summarization_tool_middleware(model, backend)],
             "name": f"cud-{self.agent_dir.name}",
         }
@@ -115,27 +107,6 @@ class AgentRuntime:
             )
         config = {"configurable": {"thread_id": thread}}
         raw = self.graph.invoke({"messages": [{"role": "user", "content": message}]}, config)
-        return _response_from_raw(raw)
-
-    def resume_approval(
-        self,
-        *,
-        thread_id: str | None = None,
-        approve: bool,
-        message: str | None = None,
-    ) -> RuntimeResponse:
-        if self.graph is None:
-            return RuntimeResponse(
-                "Cud runtime dependencies are not installed. Install package dependencies to resume an agent."
-            )
-        
-        decision: dict[str, Any]
-        if approve:
-            decision = {"type": "approve"}
-        else:
-            decision = {"type": "reject", "message": message or "User denied the tool call."}
-        config = {"configurable": {"thread_id": thread_id or self.thread_id}}
-        raw = self.graph.invoke(Command(resume={"decisions": [decision]}), config)
         return _response_from_raw(raw)
 
     def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
@@ -200,40 +171,10 @@ def _extract_content(raw: Any) -> str:
 
 
 def _response_from_raw(raw: Any) -> RuntimeResponse:
-    if _has_interrupt(raw):
-        return RuntimeResponse(content=_format_interrupt(raw), raw=raw, interrupted=True)
     content = _extract_content(raw).strip()
     if not content:
         content = "The agent finished without text output."
     return RuntimeResponse(content=content, raw=raw)
-
-
-def _has_interrupt(raw: Any) -> bool:
-    return isinstance(raw, dict) and bool(raw.get("__interrupt__"))
-
-
-def _format_interrupt(raw: Any) -> str:
-    requests = _interrupt_action_requests(raw)
-    if not requests:
-        return "Tool approval required. Use `/approve` or `/deny`."
-    lines = ["Tool approval required. Use `/approve` to continue or `/deny` to reject."]
-    for request in requests:
-        name = request.get("name", "tool")
-        args = request.get("args", {})
-        lines.append(f"- {name}: {args}")
-    return "\n".join(lines)
-
-
-def _interrupt_action_requests(raw: Any) -> list[dict[str, Any]]:
-    if not isinstance(raw, dict):
-        return []
-    interrupts = raw.get("__interrupt__") or []
-    requests: list[dict[str, Any]] = []
-    for item in interrupts:
-        value = getattr(item, "value", None)
-        if isinstance(value, dict):
-            requests.extend(value.get("action_requests", []) or [])
-    return requests
 
 
 def _drop_last_exchange(messages: list[Any]) -> list[Any]:

@@ -26,8 +26,6 @@ from cud.gateway.threading import discord_thread_id
 @dataclass(slots=True)
 class SessionState:
     runtime: AgentRuntime
-    yolo: bool = False
-    pending_decision: Any = None
     progress: ProgressBubble = field(default_factory=ProgressBubble)
 
 
@@ -68,7 +66,6 @@ class DiscordGateway:
                 state = self.session(thread_id)
                 async with message.channel.typing():
                     response = await asyncio.to_thread(state.runtime.invoke, message.content, thread_id=thread_id)
-                state.pending_decision = response.raw if response.interrupted else None
                 await message.reply(response.content[:1900])
             except Exception as exc:
                 traceback.print_exc()
@@ -94,14 +91,7 @@ class DiscordGateway:
             self._reload_sessions()
             await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
 
-        @bot.tree.command(name="yolo", description="Toggle approval prompts for this Discord thread.")
-        async def yolo(interaction: Any) -> None:
-            thread_id = discord_thread_id(interaction.channel)
-            state = self.session(thread_id)
-            state.yolo = not state.yolo
-            state.runtime.close()
-            state.runtime = AgentRuntime(self.agent_dir, thread_id=thread_id, yolo=state.yolo)
-            await interaction.response.send_message(f"YOLO is now `{state.yolo}`.", ephemeral=True)
+
 
         @bot.tree.command(name="compress", description="Force context compaction on the current thread.")
         async def compress(interaction: Any, focus_topic: str | None = None) -> None:
@@ -134,46 +124,7 @@ class DiscordGateway:
             self._reload_sessions()
             await interaction.response.send_message("MCP reloaded.", ephemeral=True)
 
-        @bot.tree.command(name="approve", description="Approve the latest pending tool request.")
-        async def approve(interaction: Any) -> None:
-            thread_id = discord_thread_id(interaction.channel)
-            state = self.session(thread_id)
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            try:
-                response = await asyncio.to_thread(
-                    state.runtime.resume_approval,
-                    thread_id=thread_id,
-                    approve=True,
-                )
-                state.pending_decision = response.raw if response.interrupted else None
-                await interaction.followup.send(response.content[:1900], ephemeral=False)
-            except Exception as exc:
-                traceback.print_exc()
-                await interaction.followup.send(
-                    f"Cud error while approving: `{type(exc).__name__}: {str(exc)[:1500]}`",
-                    ephemeral=True,
-                )
 
-        @bot.tree.command(name="deny", description="Deny the latest pending tool request.")
-        async def deny(interaction: Any) -> None:
-            thread_id = discord_thread_id(interaction.channel)
-            state = self.session(thread_id)
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            try:
-                response = await asyncio.to_thread(
-                    state.runtime.resume_approval,
-                    thread_id=thread_id,
-                    approve=False,
-                    message="User denied the requested tool call from Discord.",
-                )
-                state.pending_decision = response.raw if response.interrupted else None
-                await interaction.followup.send(response.content[:1900], ephemeral=False)
-            except Exception as exc:
-                traceback.print_exc()
-                await interaction.followup.send(
-                    f"Cud error while denying: `{type(exc).__name__}: {str(exc)[:1500]}`",
-                    ephemeral=True,
-                )
 
         memory_group = app_commands.Group(name="memory", description="Manage Cud long-term memory.")
 

@@ -6,14 +6,7 @@ model:
   context_window: 32768
 runtime:
   max_tool_calls_per_run: 24
-  require_approval: true
   allow_traversal: true
-  mutable_tools:
-    - write_file
-    - edit_file
-    - execute
-    - memory_update
-    - memory_clear
 gateway:
   provider: discord
   token: ""
