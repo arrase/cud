@@ -10,17 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from deepagents import create_deep_agent
-from deepagents.middleware import (
-    FilesystemMiddleware,
-    MemoryMiddleware,
-    SkillsMiddleware,
-)
+from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from langchain_core.tools import StructuredTool
 from langchain_ollama import ChatOllama
-from langchain.agents.middleware import (
-    ShellToolMiddleware,
-    HostExecutionPolicy,
-)
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
@@ -77,21 +69,23 @@ class AgentRuntime:
         if self.settings.runtime.require_approval and not self.yolo:
             interrupt_on = {name: True for name in self.settings.runtime.mutable_tools}
 
-        middleware = [
-            FilesystemMiddleware(workspace_root=self.workspace_dir),
-            ShellToolMiddleware(
-                workspace_root=self.workspace_dir,
-                execution_policy=HostExecutionPolicy(),
-            ),
-            MemoryMiddleware(memory_path=self.agent_dir / "MEMORY.md"),
-            SkillsMiddleware(skills_dir=self.agent_dir / "skills"),
-        ]
+        default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=True)
+        agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=True)
+        
+        backend = CompositeBackend(
+            default=default_backend,
+            routes={
+                "/agent/": agent_backend,
+            }
+        )
 
         kwargs: dict[str, Any] = {
             "model": model,
             "tools": mcp_tools,
             "system_prompt": self.prompt.text,
-            "middleware": middleware,
+            "backend": backend,
+            "memory": ["/agent/MEMORY.md"],
+            "skills": ["/agent/skills/"],
             "checkpointer": checkpointer,
             "interrupt_on": interrupt_on,
             "name": f"cud-{self.agent_dir.name}",
@@ -187,8 +181,9 @@ class AgentRuntime:
         return "History cleared."
 
     def close(self) -> None:
-        if self.shell is not None:
-            self.shell.close()
+        shell = getattr(self, "shell", None)
+        if shell is not None:
+            shell.close()
         self._exit_stack.close()
 
 

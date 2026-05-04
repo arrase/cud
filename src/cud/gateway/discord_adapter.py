@@ -64,8 +64,8 @@ class DiscordGateway:
             if not message.content:
                 return
             thread_id = discord_thread_id(message)
-            state = self.session(thread_id)
             try:
+                state = self.session(thread_id)
                 async with message.channel.typing():
                     response = await asyncio.to_thread(state.runtime.invoke, message.content, thread_id=thread_id)
                 state.pending_decision = response.raw if response.interrupted else None
