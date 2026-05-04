@@ -38,19 +38,17 @@ def save_mcp_config(agent_dir: Path, config: MCPConfig) -> None:
     (agent_dir / "mcp.json").write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
 
 
-def filter_tool_names(tool_names: list[str], config: MCPConfig, max_tools: int) -> list[str]:
+def filter_tool_names(tool_names: list[str], config: MCPConfig) -> list[str]:
     names = tool_names
     if config.allowed_tools:
         allowed = set(config.allowed_tools)
         names = [name for name in names if name in allowed]
     disabled = set(config.disabled_tools)
     names = [name for name in names if name not in disabled]
-    if len(names) > max_tools and not config.allowed_tools:
-        raise ValueError("MCP exposes too many tools; configure allowedTools in mcp.json")
-    return names[:max_tools]
+    return names
 
 
-def render_mcp_summary(config: MCPConfig, max_tools: int) -> str:
+def render_mcp_summary(config: MCPConfig) -> str:
     if not config.servers:
         return "No MCP servers configured."
     server_names = ", ".join(sorted(config.servers))
@@ -59,11 +57,10 @@ def render_mcp_summary(config: MCPConfig, max_tools: int) -> str:
         filters.append(f"allowedTools={len(config.allowed_tools)}")
     if config.disabled_tools:
         filters.append(f"disabledTools={len(config.disabled_tools)}")
-    budget = f"maxVisible={max_tools}"
-    return f"Servers: {server_names}. Filters: {', '.join(filters + [budget])}."
+    return f"Servers: {server_names}. Filters: {', '.join(filters) or 'none'}."
 
 
-async def load_langchain_mcp_tools(agent_dir: Path, max_tools: int) -> list[Any]:
+async def load_langchain_mcp_tools(agent_dir: Path) -> list[Any]:
     """Load MCP tools through langchain-mcp-adapters when installed.
 
     The adapter API has changed across releases, so this function keeps the
@@ -76,6 +73,6 @@ async def load_langchain_mcp_tools(agent_dir: Path, max_tools: int) -> list[Any]
 
     client = MultiServerMCPClient(config.servers)
     tools = await client.get_tools()
-    enabled_names = set(filter_tool_names([tool.name for tool in tools], config, max_tools))
+    enabled_names = set(filter_tool_names([tool.name for tool in tools], config))
     return [tool for tool in tools if tool.name in enabled_names]
 

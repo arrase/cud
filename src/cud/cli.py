@@ -240,7 +240,6 @@ def cmd_tools_list(args: argparse.Namespace) -> int:
     for name in sorted(mcp.allowed_tools):
         table.add_row(name, "mcp allowed")
     console.print(table)
-    console.print(f"visible tool budget: {settings.runtime.max_visible_tools}")
     return 0
 
 

@@ -20,7 +20,7 @@ class PromptSnapshot:
 def build_system_prompt(agent_dir: Path, settings: Settings) -> PromptSnapshot:
     agent_text = _read_or_empty(agent_dir / "AGENT.md")
     memory_text = _read_or_empty(agent_dir / "MEMORY.md")
-    mcp_summary = render_mcp_summary(load_mcp_config(agent_dir), settings.runtime.max_visible_tools)
+    mcp_summary = render_mcp_summary(load_mcp_config(agent_dir))
     text = "\n\n".join(
         [
             "# Agent Instructions",

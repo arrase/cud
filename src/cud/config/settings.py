@@ -28,7 +28,6 @@ class CompressionSettings:
 
 @dataclass(slots=True)
 class RuntimeSettings:
-    max_visible_tools: int = 24
     max_tool_calls_per_run: int = 24
     require_approval: bool = True
     allow_traversal: bool = True
@@ -101,6 +100,4 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.context_window must be positive")
     if not 0 < settings.compression.threshold_ratio <= 1:
         raise ValueError("compression.threshold_ratio must be in (0, 1]")
-    if settings.runtime.max_visible_tools <= 0:
-        raise ValueError("runtime.max_visible_tools must be positive")
 

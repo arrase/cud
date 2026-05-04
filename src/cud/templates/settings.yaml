@@ -10,7 +10,6 @@ compression:
   max_tool_output_chars: 4000
   keep_recent_messages: 12
 runtime:
-  max_visible_tools: 24
   max_tool_calls_per_run: 24
   require_approval: true
   allow_traversal: true

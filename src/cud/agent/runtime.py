@@ -103,10 +103,8 @@ class AgentRuntime:
         return SqliteSaver(str(db_path))
 
     def _build_mcp_tools(self) -> list[Any]:
-        mcp_tools = _run_async_sync(
-            load_langchain_mcp_tools(self.agent_dir, self.settings.runtime.max_visible_tools)
-        )
-        return mcp_tools[: self.settings.runtime.max_visible_tools]
+        mcp_tools = _run_async_sync(load_langchain_mcp_tools(self.agent_dir))
+        return mcp_tools
 
     def invoke(self, message: str, *, thread_id: str | None = None) -> RuntimeResponse:
         thread = thread_id or self.thread_id
