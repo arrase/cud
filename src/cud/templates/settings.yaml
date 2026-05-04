@@ -1,6 +1,6 @@
 model:
   provider: ollama
-  name: qwen2.5-coder:14b
+  name: gemma4:e4b
   base_url: http://localhost:11434
   temperature: 0.2
   compressor_temperature: 0.0

@@ -9,6 +9,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from deepagents import create_deep_agent
+from langchain_core.tools import StructuredTool
+from langchain_ollama import ChatOllama
+from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.types import Command
+
 from cud.agent.compression import CompactionResult, compact_messages
 from cud.agent.prompts import PromptSnapshot, build_system_prompt
 from cud.config.settings import Settings, load_settings
@@ -52,12 +58,6 @@ class AgentRuntime:
         self.graph = self._build_graph()
 
     def _build_graph(self) -> Any:
-        try:
-            from deepagents import create_deep_agent
-            from langchain_ollama import ChatOllama
-        except ImportError:
-            return None
-
         model = ChatOllama(
             model=self.settings.model.name,
             base_url=self.settings.model.base_url,
@@ -82,10 +82,6 @@ class AgentRuntime:
         return create_deep_agent(**{key: value for key, value in kwargs.items() if value is not None})
 
     def _sqlite_checkpointer(self) -> Any:
-        try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError:  # pragma: no cover - optional dependency
-            return None
         db_path = self.agent_dir / "history.db"
         if hasattr(SqliteSaver, "from_conn_string"):
             saver = SqliteSaver.from_conn_string(str(db_path))
@@ -95,11 +91,6 @@ class AgentRuntime:
         return SqliteSaver(str(db_path))
 
     def _build_langchain_tools(self) -> list[Any]:
-        try:
-            from langchain_core.tools import StructuredTool
-        except ImportError:
-            return []
-
         allow_trav = self.settings.runtime.allow_shell_traversal
         fs = FileSystemTools(self.workspace_dir, allow_traversal=allow_trav)
         memory = MemoryStore(self.agent_dir / "MEMORY.md")
@@ -168,11 +159,7 @@ class AgentRuntime:
             return RuntimeResponse(
                 "Cud runtime dependencies are not installed. Install package dependencies to resume an agent."
             )
-        try:
-            from langgraph.types import Command
-        except ImportError as exc:  # pragma: no cover - optional dependency
-            raise RuntimeError("LangGraph is required to resume an interrupted agent") from exc
-
+        
         decision: dict[str, Any]
         if approve:
             decision = {"type": "approve"}
@@ -214,11 +201,6 @@ class AgentRuntime:
     def clear_history(self, *, thread_id: str | None = None) -> str:
         thread = thread_id or self.thread_id
         
-        try:
-            from langgraph.checkpoint.sqlite import SqliteSaver
-        except ImportError:
-            return "LangGraph dependencies not installed."
-            
         db_path = self.agent_dir / "history.db"
         if not db_path.exists():
             return "History is already empty."
