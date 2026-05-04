@@ -116,8 +116,8 @@ class AgentRuntime:
             StructuredTool.from_function(fs.read_file, name="read_file", description=f"Read a {scope_prefix} UTF-8 file."),
             StructuredTool.from_function(fs.write_file, name="write_file", description=f"Write a {scope_prefix} UTF-8 file."),
             StructuredTool.from_function(fs.edit_file, name="edit_file", description=f"Replace text in a {scope_prefix} file."),
-            StructuredTool.from_function(fs.glob, name="glob", description="Find workspace files by glob. (Searches workspace only)"),
-            StructuredTool.from_function(fs.grep, name="grep", description="Search workspace file contents. (Searches workspace only)"),
+            StructuredTool.from_function(fs.glob, name="glob", description=f"Find files by glob {scope_desc}."),
+            StructuredTool.from_function(fs.grep, name="grep", description=f"Search file contents {scope_desc}."),
             StructuredTool.from_function(
                 lambda command: self.shell_exec(command),
                 name="shell_exec",

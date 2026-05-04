@@ -59,22 +59,24 @@ class FileSystemTools:
         except Exception as exc:
             return _tool_error(exc)
 
-    def glob(self, pattern: str) -> str:
+    def glob(self, pattern: str, path: str = ".") -> str:
         try:
-            matches = sorted(path.relative_to(self.root).as_posix() for path in self.root.glob(pattern))
+            target = self.resolve(path)
+            matches = sorted(p.relative_to(self.root).as_posix() if self.root in p.parents else str(p) for p in target.glob(pattern))
             return "\n".join(matches)
         except Exception as exc:
             return _tool_error(exc)
 
-    def grep(self, pattern: str, glob: str = "**/*") -> str:
+    def grep(self, pattern: str, glob: str = "**/*", path: str = ".") -> str:
         try:
+            target = self.resolve(path)
             lines: list[str] = []
-            for path in sorted(self.root.rglob("*")):
-                rel = path.relative_to(self.root).as_posix()
-                if not path.is_file() or not fnmatch.fnmatch(rel, glob):
+            for p in sorted(target.rglob("*")):
+                rel = p.relative_to(self.root).as_posix() if self.root in p.parents else str(p)
+                if not p.is_file() or not fnmatch.fnmatch(rel, glob) and not fnmatch.fnmatch(p.name, glob):
                     continue
                 try:
-                    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                    for number, line in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1):
                         if pattern in line:
                             lines.append(f"{rel}:{number}:{line}")
                 except UnicodeDecodeError:
