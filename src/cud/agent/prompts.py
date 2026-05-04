@@ -25,8 +25,6 @@ def build_system_prompt(agent_dir: Path, settings: Settings) -> PromptSnapshot:
         [
             "# Agent Instructions",
             agent_text.strip(),
-            "# Long-Term Memory Snapshot",
-            memory_text.strip() or "No memory.",
             "# MCP Summary",
             mcp_summary,
         ]
