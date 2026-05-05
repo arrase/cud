@@ -1,0 +1,1 @@
+"""Bundled skill templates."""

@@ -14,6 +14,7 @@ from discord.ext import commands
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings, save_settings
+from cud.gateway.scheduler import TaskScheduler
 from cud.gateway.threading import discord_thread_id
 
 DISCORD_MAX_LENGTH = 1900
@@ -31,6 +32,8 @@ class DiscordGateway:
         self.settings = load_settings(self.agent_dir)
         self.verbose = verbose
         self.sessions: dict[str, SessionState] = {}
+        self.bot: commands.Bot | None = None
+        self.scheduler = TaskScheduler(self)
 
     # -- Session management --------------------------------------------------
 
@@ -116,7 +119,8 @@ class DiscordGateway:
 
     async def cmd_reload(self, interaction: Any) -> None:
         self._reload_sessions()
-        await interaction.response.send_message("Agent reloaded.", ephemeral=True)
+        self.scheduler.reload()
+        await interaction.response.send_message("Agent and tasks reloaded.", ephemeral=True)
 
     async def cmd_memory_view(self, interaction: Any) -> None:
         path = self.agent_dir / "MEMORY.md"
@@ -135,11 +139,13 @@ class DiscordGateway:
         intents = discord.Intents.default()
         intents.message_content = True
         bot = commands.Bot(command_prefix="!cud ", intents=intents)
+        self.bot = bot
         gw = self  # Capture for closures below.
 
         @bot.event
         async def on_ready() -> None:
             await bot.tree.sync()
+            bot.loop.create_task(gw.scheduler.run())
             if gw.verbose:
                 print(f"Discord gateway ready as {bot.user}")
 

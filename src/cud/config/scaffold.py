@@ -6,6 +6,7 @@ import shutil
 import sqlite3
 from importlib.resources import files
 from pathlib import Path
+from typing import Any
 
 from .paths import agent_home, agents_root
 
@@ -25,6 +26,7 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
     workspace_dir = target / "workspace"
     workspace_dir.mkdir(exist_ok=True)
     (workspace_dir / "skills").mkdir(exist_ok=True)
+    (workspace_dir / "tasks").mkdir(exist_ok=True)
     template_root = files("cud.templates")
     for filename in TEMPLATE_NAMES:
         destination = target / filename
@@ -32,8 +34,36 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
             continue
         source = template_root / filename
         destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    _copy_bundled_skills(workspace_dir / "skills", template_root, overwrite=overwrite)
     _init_history_db(target / "history.db")
     return target
+
+
+def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: bool = False) -> None:
+    """Copy skill templates shipped with the package into the agent workspace."""
+    bundled = template_root / "skills"
+    try:
+        entries = list(bundled.iterdir())
+    except (TypeError, FileNotFoundError, AttributeError):
+        return
+    for skill in entries:
+        if skill.name == "__pycache__":
+            continue
+        if not _is_directory_resource(skill):
+            continue
+        dest = skills_dir / skill.name
+        if dest.exists() and not overwrite:
+            continue
+        dest.mkdir(exist_ok=True)
+        for child in skill.iterdir():
+            if child.name.endswith(".py") or child.name == "__pycache__":
+                continue
+            (dest / child.name).write_text(child.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def _is_directory_resource(resource: Any) -> bool:
+    """Check if an importlib.resources traversable is a directory."""
+    return hasattr(resource, "iterdir") and not hasattr(resource, "open") or resource.is_dir()
 
 
 def _init_history_db(path: Path) -> None:

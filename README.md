@@ -97,6 +97,14 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 ### 🪄 Skills (`SKILL.md`)
 Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.
 
+### ⏱️ Periodic Tasks
+Agents can execute scheduled, periodic tasks autonomously. Tasks are defined as Markdown files (`TASK.md`) located in the agent's `workspace/tasks/<name>/` directory.
+- Use a YAML frontmatter to configure the `schedule` (cron expression) and the destination (`channel_id` or `user_id`).
+- The rest of the file is the prompt the agent executes.
+- Ask your agent to create tasks for you, or edit them manually.
+- Use the `/reload` command in Discord to activate changes.
+- Check active tasks via the CLI: `cud task list <agent>`.
+
 ### 🌐 Model Context Protocol (MCP)
 Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:
 ```bash

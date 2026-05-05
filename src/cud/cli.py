@@ -9,6 +9,7 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from rich.console import Console
@@ -19,6 +20,7 @@ from cud.config.scaffold import create_agent, delete_agent, list_agents
 from cud.config.settings import load_settings, save_settings
 from cud.gateway import systemd
 from cud.tools.mcp import load_mcp_config, save_mcp_config
+from cud.tools.tasks import discover_tasks
 
 
 console = Console()
@@ -102,6 +104,13 @@ def build_parser() -> argparse.ArgumentParser:
     completion = sub.add_parser("completion", help="Generate shell completion")
     completion.add_argument("shell", choices=["bash", "zsh"])
     completion.set_defaults(func=cmd_completion)
+
+    task = sub.add_parser("task", help="Manage periodic tasks")
+    task_sub = task.add_subparsers(dest="task_command", required=True)
+    task_list = task_sub.add_parser("list", help="List scheduled tasks")
+    task_list.add_argument("agent")
+    task_list.set_defaults(func=cmd_task_list)
+
     return parser
 
 
@@ -290,9 +299,39 @@ def cmd_engine_pull(args: argparse.Namespace) -> int:
 
 def cmd_completion(args: argparse.Namespace) -> int:
     if args.shell == "bash":
-        console.print("complete -W 'agent gateway tools mcp engine completion' cud")
+        console.print("complete -W 'agent gateway tools mcp engine task completion' cud")
     else:
-        console.print("#compdef cud\n_arguments '1:command:(agent gateway tools mcp engine completion)'")
+        console.print("#compdef cud\n_arguments '1:command:(agent gateway tools mcp engine task completion)'")
+    return 0
+
+
+def cmd_task_list(args: argparse.Namespace) -> int:
+    directory = agent_home(args.agent)
+    tasks_dir = directory / "workspace" / "tasks"
+    tasks = discover_tasks(tasks_dir)
+    if not tasks:
+        console.print(f"No tasks found in {tasks_dir}")
+        return 0
+    table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
+    now = datetime.now(timezone.utc)
+    for task in tasks:
+        if task.channel_id:
+            dest = f"channel:{task.channel_id}"
+        elif task.user_id:
+            dest = f"DM:{task.user_id}"
+        else:
+            dest = "none"
+        next_run = "—"
+        if task.enabled:
+            try:
+                from croniter import croniter
+                cron = croniter(task.schedule, now)
+                next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                next_run = "invalid cron"
+        enabled = "✓" if task.enabled else "✗"
+        table.add_row(task.name, task.schedule, dest, enabled, next_run)
+    console.print(table)
     return 0
 
 
