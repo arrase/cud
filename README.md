@@ -2,9 +2,6 @@
 
 **Cud** (the bolus of food that llamas chew) is a local-first, OpenClaw-like multi-agent framework focused on **simplicity** and **local** interaction.
 
-Optimized for **Small Language Models (SLMs)** in the ~15B parameter range, Cud brings autonomous, tool-equipped AI agents to your local machine using **Ollama** and **DeepAgents**.
----
-
 ## 🌟 Core Principles
 
 - **Local-First & Private**: Your data, prompts, and memory stay on your machine.
