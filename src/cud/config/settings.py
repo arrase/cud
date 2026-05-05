@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,6 @@ class ModelSettings:
 
 @dataclass(slots=True)
 class RuntimeSettings:
-    max_tool_calls_per_run: int = 24
     allow_traversal: bool = True
 
 
@@ -53,12 +52,10 @@ class Settings:
 
 
 def _dataclass_from_dict(cls: type[Any], raw: dict[str, Any] | None) -> Any:
-    defaults = cls()
     if not raw:
-        return defaults
-    valid = {field_name for field_name in defaults.__dataclass_fields__}
-    data = {key: value for key, value in raw.items() if key in valid}
-    return cls(**{**asdict(defaults), **data})
+        return cls()
+    valid = {f.name for f in fields(cls)}
+    return cls(**{k: v for k, v in raw.items() if k in valid})
 
 
 def load_settings(agent_dir: Path) -> Settings:
@@ -84,4 +81,3 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.name is required")
     if settings.model.context_window <= 0:
         raise ValueError("model.context_window must be positive")
-

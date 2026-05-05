@@ -11,12 +11,12 @@ from typing import Any
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
+from deepagents.middleware.summarization import create_summarization_tool_middleware
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from cud.config.settings import Settings, load_settings
 from cud.tools.mcp import load_langchain_mcp_tools
-from deepagents.middleware.summarization import create_summarization_tool_middleware
 
 
 @dataclass(slots=True)
@@ -58,46 +58,31 @@ class AgentRuntime:
             num_ctx=self.settings.model.context_window,
             profile={"max_input_tokens": self.settings.model.context_window},
         )
-        
-        mcp_tools = self._build_mcp_tools()
-        checkpointer = self._sqlite_checkpointer()
 
         virtual_mode = not self.settings.runtime.allow_traversal
         default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=virtual_mode)
         agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=True)
-        
         backend = CompositeBackend(
             default=default_backend,
-            routes={
-                "/agent/": agent_backend,
-            }
+            routes={"/agent/": agent_backend},
         )
 
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "tools": mcp_tools,
-            "system_prompt": self.prompt,
-            "backend": backend,
-            "memory": ["/agent/MEMORY.md"],
-            "skills": ["/agent/skills/"],
-            "checkpointer": checkpointer,
-            "middleware": [create_summarization_tool_middleware(model, backend)],
-            "name": f"cud-{self.agent_dir.name}",
-        }
-        return create_deep_agent(**{key: value for key, value in kwargs.items() if value is not None})
+        return create_deep_agent(
+            model=model,
+            tools=_run_async_sync(load_langchain_mcp_tools(self.agent_dir)),
+            system_prompt=self.prompt,
+            backend=backend,
+            memory=["/agent/MEMORY.md"],
+            skills=["/agent/skills/"],
+            checkpointer=self._sqlite_checkpointer(),
+            middleware=[create_summarization_tool_middleware(model, backend)],
+            name=f"cud-{self.agent_dir.name}",
+        )
 
     def _sqlite_checkpointer(self) -> Any:
         db_path = self.agent_dir / "history.db"
-        if hasattr(SqliteSaver, "from_conn_string"):
-            saver = SqliteSaver.from_conn_string(str(db_path))
-            if hasattr(saver, "__enter__"):
-                return self._exit_stack.enter_context(saver)
-            return saver
-        return SqliteSaver(str(db_path))
-
-    def _build_mcp_tools(self) -> list[Any]:
-        mcp_tools = _run_async_sync(load_langchain_mcp_tools(self.agent_dir))
-        return mcp_tools
+        saver = SqliteSaver.from_conn_string(str(db_path))
+        return self._exit_stack.enter_context(saver)
 
     def invoke(self, message: str, *, thread_id: str | None = None) -> RuntimeResponse:
         thread = thread_id or self.thread_id
@@ -115,46 +100,24 @@ class AgentRuntime:
         thread = thread_id or self.thread_id
         config = {"configurable": {"thread_id": thread}}
         state = self.graph.get_state(config)
-        values = getattr(state, "values", {}) or {}
-        messages = list(values.get("messages", []))
+        messages = list((getattr(state, "values", {}) or {}).get("messages", []))
         if not messages:
             return "No messages to undo."
-        trimmed = _drop_last_exchange(messages)
-        self.graph.update_state(config, {"messages": trimmed})
+        self.graph.update_state(config, {"messages": _drop_last_exchange(messages)})
         return "Last exchange removed."
 
-    def clear_history(self, *, thread_id: str | None = None) -> str:
-        thread = thread_id or self.thread_id
-        
+    def clear_history(self) -> str:
         db_path = self.agent_dir / "history.db"
         if not db_path.exists():
             return "History is already empty."
-            
         try:
-            if hasattr(SqliteSaver, "from_conn_string"):
-                with SqliteSaver.from_conn_string(str(db_path)) as saver:
-                    if hasattr(saver, "delete_thread"):
-                        saver.delete_thread(thread)
-                    else:
-                        return "LangGraph version does not support deleting threads natively."
-            else:
-                saver = SqliteSaver(str(db_path))
-                if hasattr(saver, "delete_thread"):
-                    saver.delete_thread(thread)
-                else:
-                    return "LangGraph version does not support deleting threads natively."
-                    
-        except Exception as exc:
+            db_path.unlink()
+        except OSError as exc:
             return f"Failed to clear history: {exc}"
-            
-        # Rebuild graph to ensure it picks up the clean state if it caches saver
         self.graph = self._build_graph()
         return "History cleared."
 
     def close(self) -> None:
-        shell = getattr(self, "shell", None)
-        if shell is not None:
-            shell.close()
         self._exit_stack.close()
 
 
@@ -172,22 +135,18 @@ def _extract_content(raw: Any) -> str:
 
 def _response_from_raw(raw: Any) -> RuntimeResponse:
     content = _extract_content(raw).strip()
-    if not content:
-        content = "The agent finished without text output."
-    return RuntimeResponse(content=content, raw=raw)
+    return RuntimeResponse(content=content or "The agent finished without text output.", raw=raw)
 
 
 def _drop_last_exchange(messages: list[Any]) -> list[Any]:
     trimmed = list(messages)
-    seen_user = False
     while trimmed:
         role = _role(trimmed[-1])
-        item = trimmed.pop()
+        trimmed.pop()
         if role in {"human", "user"}:
-            seen_user = True
             break
-        if role == "system" and not seen_user:
-            trimmed.append(item)
+        if role == "system":
+            trimmed.append(messages[len(trimmed)])
             break
     return trimmed
 

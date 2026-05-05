@@ -1,14 +1,10 @@
-"""Discord gateway adapter.
-
-The module imports discord.py lazily so administrative CLI and tests can run
-without gateway dependencies installed.
-"""
+"""Discord gateway adapter."""
 
 from __future__ import annotations
 
 import asyncio
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,14 +15,12 @@ from discord.ext import commands
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings, save_settings
-from cud.gateway.progress import ProgressBubble
 from cud.gateway.threading import discord_thread_id
 
 
 @dataclass(slots=True)
 class SessionState:
     runtime: AgentRuntime
-    progress: ProgressBubble = field(default_factory=ProgressBubble)
 
 
 class DiscordGateway:
@@ -57,9 +51,7 @@ class DiscordGateway:
 
         @bot.event
         async def on_message(message: Any) -> None:
-            if message.author.bot:
-                return
-            if not message.content:
+            if message.author.bot or not message.content:
                 return
             thread_id = discord_thread_id(message)
             try:
@@ -75,8 +67,7 @@ class DiscordGateway:
         async def new_session(interaction: Any) -> None:
             thread_id = discord_thread_id(interaction.channel)
             state = self.session(thread_id)
-            await asyncio.to_thread(state.runtime.clear_history, thread_id=thread_id)
-            
+            await asyncio.to_thread(state.runtime.clear_history)
             old = self.sessions.pop(thread_id, None)
             if old:
                 old.runtime.close()
@@ -91,8 +82,6 @@ class DiscordGateway:
             self._reload_sessions()
             await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
 
-
-
         @bot.tree.command(name="compress", description="Force context compaction on the current thread.")
         async def compress(interaction: Any, focus_topic: str | None = None) -> None:
             await interaction.response.send_message(
@@ -102,9 +91,8 @@ class DiscordGateway:
         @bot.tree.command(name="usage", description="Show Cud runtime usage summary.")
         async def usage(interaction: Any) -> None:
             thread_id = discord_thread_id(interaction.channel)
-            state = self.session(thread_id)
             await interaction.response.send_message(
-                f"thread_id=`{thread_id}` prompt_hash=`{state.runtime.prompt.system_prompt_hash[:12]}`",
+                f"agent=`{self.agent}` model=`{self.settings.model.name}` thread=`{thread_id}`",
                 ephemeral=True,
             )
 
@@ -114,34 +102,21 @@ class DiscordGateway:
             result = self.session(thread_id).runtime.undo_last_exchange(thread_id=thread_id)
             await interaction.response.send_message(result, ephemeral=True)
 
-        @bot.tree.command(name="reload-tools", description="Reload tools and prompt for this agent.")
-        async def reload_tools(interaction: Any) -> None:
+        @bot.tree.command(name="reload", description="Reload tools and prompt for this agent.")
+        async def reload(interaction: Any) -> None:
             self._reload_sessions()
-            await interaction.response.send_message("Tools reloaded.", ephemeral=True)
-
-        @bot.tree.command(name="reload-mcp", description="Reload MCP tools and prompt for this agent.")
-        async def reload_mcp(interaction: Any) -> None:
-            self._reload_sessions()
-            await interaction.response.send_message("MCP reloaded.", ephemeral=True)
-
-
+            await interaction.response.send_message("Agent reloaded.", ephemeral=True)
 
         memory_group = app_commands.Group(name="memory", description="Manage Cud long-term memory.")
 
         @memory_group.command(name="view", description="View MEMORY.md.")
         async def memory_view(interaction: Any) -> None:
-            # We use a standard file read for the view command if we want to bypass the runtime
             path = self.agent_dir / "MEMORY.md"
             content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
             await interaction.response.send_message(content[:1900], ephemeral=True)
 
         @memory_group.command(name="clear", description="Clear MEMORY.md.")
         async def memory_clear(interaction: Any) -> None:
-            # We can use the runtime's clear_history if intended, 
-            # but memory.clear was specifically for MEMORY.md.
-            # Since custom tools are gone, we'll just clear the file directly or 
-            # call a runtime method if we added one for middleware.
-            # For now, direct file access is safest for this specific gateway command.
             path = self.agent_dir / "MEMORY.md"
             path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
             self._reload_sessions()
@@ -157,7 +132,3 @@ class DiscordGateway:
     def _reload_sessions(self) -> None:
         for state in self.sessions.values():
             state.runtime.reload()
-
-
-def configured_token(agent_dir: Path) -> str:
-    return load_settings(agent_dir).gateway.token

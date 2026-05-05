@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict
 import json
 import subprocess
 import sys
@@ -19,7 +18,7 @@ from cud.config.scaffold import create_agent, delete_agent, list_agents
 from cud.config.settings import load_settings, save_settings
 from cud.gateway import systemd
 from cud.tools.mcp import load_mcp_config, save_mcp_config
-from cud.tools.skills import discover_skills
+
 
 console = Console()
 
@@ -268,7 +267,8 @@ def cmd_mcp_add(args: argparse.Namespace) -> int:
 
 def cmd_mcp_list(args: argparse.Namespace) -> int:
     config = load_mcp_config(agent_home(args.agent))
-    console.print(json.dumps(asdict(config), indent=2))
+    data = {"servers": config.servers, "allowedTools": config.allowed_tools, "disabledTools": config.disabled_tools}
+    console.print(json.dumps(data, indent=2))
     return 0
 
 

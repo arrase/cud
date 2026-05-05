@@ -5,7 +5,6 @@ model:
   temperature: 0.2
   context_window: 32768
 runtime:
-  max_tool_calls_per_run: 24
   allow_traversal: true
 gateway:
   provider: discord
