@@ -1,45 +1,67 @@
-# Cud 🦙
+# 🦙 Cud
 
-**Cud** (the bolus of food that llamas chew) is a local-first, OpenClaw-like multi-agent framework focused on **simplicity** and **local** interaction.
+> **Cud** (the bolus of food that llamas chew) is a local-first, multi-agent framework where **simplicity** is the ultimate foundation. 
 
-## 🌟 Core Principles
+Designed to be lightweight, straightforward, and incredibly easy to use, Cud brings the power of autonomous AI agents directly to your local machine.
 
-- **Local-First & Private**: Your data, prompts, and memory stay on your machine.
-- **Multi-Agent by Design**: Create a fleet of specialized agents, each with its own persona, memory, and workspace.
-- **Transparent & Hackable**: Agent behavior is defined in plain Markdown. No hidden prompts, no black boxes.
-- **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, SKILLs, and the Model Context Protocol (MCP).
-- **Daemon-Ready**: Seamlessly run your agents as background services using `systemd`.
+---
+
+## ✨ Core Principles
+
+- 🎯 **Simplicity First**: No convoluted setups or bloated abstractions. Cud is built to be intuitive, readable, and easy to hack on.
+- 🔒 **Local & Private**: Powered by **[Ollama](https://ollama.com/)**, your data, prompts, and memory stay 100% on your machine.
+- 🤖 **Multi-Agent Architecture**: Create a fleet of specialized agents, each with its own persona, memory, and workspace.
+- 📖 **Transparent**: Agent behavior is defined in plain Markdown (`AGENT.md`). No hidden prompts, no black boxes.
+- 🛠️ **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, Custom SKILLs, and the Model Context Protocol (MCP).
+- 👻 **Daemon-Ready**: Seamlessly run your agents as background services using `systemd`.
+
+---
+
+## 🦙 Ollama & Tool Calling
+
+Cud relies on **Ollama** for local inference. 
+
+> [!IMPORTANT]
+> **Tool Calling Support is Required!**  
+> Because Cud agents interact with your local environment (shell, filesystem, etc.), you **must** download and use models in Ollama that explicitly support **tool calling** (e.g., `gpt-oss:20b`, `gemma4:e4b`, `qwen3.6:27b`). 
+
+---
 
 ## 🚀 Quick Start
 
 ### 1. Installation
 
-Requires Python 3.11+.
+*Requires Python 3.11+.*
 
 ```bash
 pipx install git+https://github.com/arrase/cud.git
 ```
 
-### 2. Create Your First Agent
+### 2. Configure Ollama
+
+Ensure you have Ollama installed and a tool-calling capable model downloaded:
+
+```bash
+ollama run gemma4:e4b
+```
+
+### 3. Create Your First Agent
 
 ```bash
 # Create an agent named "researcher"
 cud agent create researcher
 
-# Configure it to use a specific model (e.g., llama3)
-cud agent config researcher --model llama3
-```
+# Configure it to use a specific model with tool calling support
+cud agent config researcher --model gemma4:e4b
 
-### 3. Run the Agent (Discord Gateway)
-
-```bash
 # Setup your Discord token
 cud gateway setup researcher discord --token YOUR_BOT_TOKEN
+```
 
-# Run it in the foreground to test
-cud gateway run researcher --verbose
+### 4. Run the Agent (Discord Gateway)
 
-# Or start it as a background service
+```bash
+# Start it as a background service
 cud gateway start researcher
 ```
 
@@ -47,20 +69,20 @@ cud gateway start researcher
 
 ## 🧠 Key Concepts
 
-### Agents & Workspaces
+### 📂 Agents & Workspaces
 Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire "soul":
-- `settings.yaml`: Model parameters and tool configurations.
-- `AGENT.md`: The system prompt—defining its persona and rules.
-- `MEMORY.md`: Long-term memory that the agent can read and update.
-- `history.db`: A SQLite-backed LangGraph checkpointer for conversation state.
-- `mcp.json`: MCP server configurations.
-- `workspace/`: The dedicated directory where the agent runs commands and edits files.
-- `workspace/skills/`: A directory for custom Markdown-defined abilities.
+- ⚙️ `settings.yaml`: Model parameters and tool configurations.
+- 🎭 `AGENT.md`: The system prompt—defining its persona and rules.
+- 📝 `MEMORY.md`: Long-term memory that the agent can read and update.
+- 💾 `history.db`: A SQLite-backed checkpointer for conversation state.
+- 🔌 `mcp.json`: MCP server configurations.
+- 💻 `workspace/`: The dedicated directory where the agent runs commands and edits files.
+- 🧰 `workspace/skills/`: A directory for custom Markdown-defined abilities.
 
-### Skills (`SKILL.md`)
+### 🪄 Skills (`SKILL.md`)
 Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.
 
-### Model Context Protocol (MCP)
+### 🌐 Model Context Protocol (MCP)
 Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:
 ```bash
 cud mcp add researcher https://mcp-server.example.com/sse --name search
@@ -72,7 +94,9 @@ cud mcp add researcher https://mcp-server.example.com/sse --name search
 
 Cud is built on a robust, modular stack:
 - **Orchestration**: [DeepAgents](https://docs.langchain.com/oss/python/deepagents/overview) provides the stateful, cyclic reasoning loops.
-- **LLM Engine**: [Ollama](https://ollama.com/) powers the local inference.
+- **LLM Engine**: [Ollama](https://ollama.com/) powers the local inference with tool calling capabilities.
+
+---
 
 ## 🛠️ Development
 
@@ -83,6 +107,8 @@ pip install -e .[dev]
 # Run tests
 pytest
 ```
+
+---
 
 ## 📜 License
 
