@@ -7,7 +7,7 @@ import sqlite3
 from importlib.resources import files
 from pathlib import Path
 
-from .paths import agent_home, agents_root, validate_agent_name
+from .paths import agent_home, agents_root
 
 TEMPLATE_NAMES = ["AGENT.md", "MEMORY.md", "settings.yaml", "mcp.json"]
 
@@ -37,15 +37,11 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
 
 
 def _init_history_db(path: Path) -> None:
-    connection = sqlite3.connect(path)
-    try:
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute(
+    with sqlite3.connect(path) as conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS cud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-        connection.commit()
-    finally:
-        connection.close()
 
 
 def list_agents() -> list[Path]:
@@ -56,8 +52,7 @@ def list_agents() -> list[Path]:
 
 
 def delete_agent(name: str, *, yes: bool = False) -> Path:
-    validate_agent_name(name)
-    target = agent_home(name)
+    target = agent_home(name)  # agent_home validates the name
     if not yes:
         raise PermissionError("delete_agent requires yes=True")
     if not target.exists():

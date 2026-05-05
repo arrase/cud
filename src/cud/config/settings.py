@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
 
@@ -37,7 +37,7 @@ class Settings:
     gateway: GatewaySettings = field(default_factory=GatewaySettings)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> "Settings":
+    def from_dict(cls, raw: dict[str, Any] | None) -> Self:
         raw = raw or {}
         return cls(
             model=_dataclass_from_dict(ModelSettings, raw.get("model")),
@@ -50,7 +50,7 @@ class Settings:
 
 
 def _dataclass_from_dict(cls: type[Any], raw: dict[str, Any] | None) -> Any:
-    if not raw:
+    if raw is None:
         return cls()
     valid = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in raw.items() if k in valid})
@@ -79,3 +79,5 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.name is required")
     if settings.model.context_window <= 0:
         raise ValueError("model.context_window must be positive")
+    if settings.model.temperature < 0:
+        raise ValueError("model.temperature must be non-negative")

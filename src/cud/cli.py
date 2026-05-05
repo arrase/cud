@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -121,7 +122,7 @@ def cmd_agent_list(args: argparse.Namespace) -> int:
         if args.verbose:
             try:
                 model = load_settings(path).model.name
-            except Exception:
+            except (FileNotFoundError, ValueError):
                 model = "invalid settings"
             table.add_row(path.name, str(path), model)
         else:
@@ -238,8 +239,6 @@ def cmd_tools_install(args: argparse.Namespace) -> int:
         if target.exists():
             console.print(f"[red]Skill already exists: {target}[/red]")
             return 2
-        import shutil
-
         shutil.copytree(source, target)
     else:
         target = skills_dir / source.stem

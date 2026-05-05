@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -38,29 +39,43 @@ def save_mcp_config(agent_dir: Path, config: MCPConfig) -> None:
     (agent_dir / "mcp.json").write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
 
 
-def filter_tool_names(tool_names: list[str], config: MCPConfig) -> list[str]:
-    names = tool_names
+def _filter_tools(tools: list[Any], config: MCPConfig) -> list[Any]:
+    """Return only the tools allowed by the MCP config."""
+    names = [tool.name for tool in tools]
     if config.allowed_tools:
         allowed = set(config.allowed_tools)
-        names = [name for name in names if name in allowed]
-    disabled = set(config.disabled_tools)
-    names = [name for name in names if name not in disabled]
-    return names
+        names = [n for n in names if n in allowed]
+    enabled = set(names) - set(config.disabled_tools)
+    return [tool for tool in tools if tool.name in enabled]
 
 
-async def load_langchain_mcp_tools(agent_dir: Path) -> list[Any]:
-    """Load MCP tools through langchain-mcp-adapters when installed.
+async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[], None] | None]:
+    """Load MCP tools and return a cleanup callback for the client.
 
-    The adapter API has changed across releases, so this function keeps the
-    dependency boundary narrow and returns an empty list when no servers exist.
+    Returns ``(tools, cleanup)`` where *cleanup* must be called to close the
+    underlying MCP transports.  When no servers are configured the cleanup
+    callback is ``None``.
     """
-
     config = load_mcp_config(agent_dir)
     if not config.servers:
-        return []
+        return [], None
 
     client = MultiServerMCPClient(config.servers)
-    tools = await client.get_tools()
-    enabled_names = set(filter_tool_names([tool.name for tool in tools], config))
-    return [tool for tool in tools if tool.name in enabled_names]
+    tools = _filter_tools(await client.get_tools(), config)
+
+    async def _close() -> None:
+        # MultiServerMCPClient exposes an async close; wrap for sync callers.
+        if hasattr(client, "close"):
+            await client.close()
+
+    def cleanup() -> None:
+        import asyncio
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_close())
+        else:
+            asyncio.ensure_future(_close())
+
+    return tools, cleanup
 

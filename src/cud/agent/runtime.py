@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import concurrent.futures
+import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
@@ -16,7 +16,7 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from cud.config.settings import Settings, load_settings
-from cud.tools.mcp import load_langchain_mcp_tools
+from cud.tools.mcp import load_mcp_tools_managed
 
 
 @dataclass(slots=True)
@@ -37,6 +37,12 @@ class AgentRuntime:
     def __post_init__(self) -> None:
         self.agent_dir = self.agent_dir.expanduser().resolve()
         self.reload()
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     @property
     def workspace_dir(self) -> Path:
@@ -67,9 +73,13 @@ class AgentRuntime:
             routes={"/agent/": agent_backend},
         )
 
+        mcp_tools, mcp_cleanup = _run_async_sync(load_mcp_tools_managed(self.agent_dir))
+        if mcp_cleanup:
+            self._exit_stack.callback(mcp_cleanup)
+
         return create_deep_agent(
             model=model,
-            tools=_run_async_sync(load_langchain_mcp_tools(self.agent_dir)),
+            tools=mcp_tools,
             system_prompt=self.prompt,
             backend=backend,
             memory=["/agent/MEMORY.md"],
@@ -95,8 +105,8 @@ class AgentRuntime:
         return _response_from_raw(raw)
 
     def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
-        if self.graph is None or not hasattr(self.graph, "get_state") or not hasattr(self.graph, "update_state"):
-            return "Undo requires LangGraph runtime dependencies and an initialized graph."
+        if self.graph is None:
+            return "Undo requires an initialized graph."
         thread = thread_id or self.thread_id
         config = {"configurable": {"thread_id": thread}}
         state = self.graph.get_state(config)
@@ -121,6 +131,11 @@ class AgentRuntime:
         self._exit_stack.close()
 
 
+# ---------------------------------------------------------------------------
+# Pure helpers (no state)
+# ---------------------------------------------------------------------------
+
+
 def _extract_content(raw: Any) -> str:
     if isinstance(raw, dict):
         messages = raw.get("messages")
@@ -139,14 +154,14 @@ def _response_from_raw(raw: Any) -> RuntimeResponse:
 
 
 def _drop_last_exchange(messages: list[Any]) -> list[Any]:
+    """Remove the last user message and all subsequent assistant/tool messages."""
     trimmed = list(messages)
     while trimmed:
         role = _role(trimmed[-1])
+        if role == "system":
+            break  # Never remove system messages.
         trimmed.pop()
         if role in {"human", "user"}:
-            break
-        if role == "system":
-            trimmed.append(messages[len(trimmed)])
             break
     return trimmed
 
@@ -158,11 +173,14 @@ def _role(message: Any) -> str:
 
 
 def _run_async_sync(coro: Any) -> Any:
+    """Run an async coroutine from synchronous code, regardless of context."""
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
+        # No event loop running — simplest path.
         return asyncio.run(coro)
-    if not loop.is_running():
-        return asyncio.run(coro)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        return executor.submit(lambda: asyncio.run(coro)).result()
+    # Inside a running loop (e.g. Discord's asyncio.to_thread). Spin up a
+    # dedicated thread so asyncio.run() can create its own loop.
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
