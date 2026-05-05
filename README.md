@@ -1,9 +1,8 @@
 # Cud 🦙
 
-**Cud** (the bolus of food that llamas chew) is a local-first, multi-agent framework designed to "ruminate" on massive context and memory, projecting intelligent responses to your terminal and messaging platforms like Discord.
+**Cud** (the bolus of food that llamas chew) is a local-first, OpenClaw-like multi-agent framework focused on **simplicity** and **local** interaction.
 
-Optimized for **Small Language Models (SLMs)** in the ~15B parameter range, Cud brings autonomous, tool-equipped AI agents to your local machine using **Ollama** and **LangGraph**.
-
+Optimized for **Small Language Models (SLMs)** in the ~15B parameter range, Cud brings autonomous, tool-equipped AI agents to your local machine using **Ollama** and **DeepAgents**.
 ---
 
 ## 🌟 Core Principles
@@ -21,9 +20,7 @@ Optimized for **Small Language Models (SLMs)** in the ~15B parameter range, Cud 
 Requires Python 3.11+.
 
 ```bash
-git clone https://github.com/your-username/cud.git
-cd cud
-pip install -e .
+pipx install git+https://github.com/arrase/cud.git
 ```
 
 ### 2. Create Your First Agent
@@ -59,6 +56,7 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 - `AGENT.md`: The system prompt—defining its persona and rules.
 - `MEMORY.md`: Long-term memory that the agent can read and update.
 - `history.db`: A SQLite-backed LangGraph checkpointer for conversation state.
+- `mcp.json`: MCP server configurations.
 - `skills/`: A directory for custom Markdown-defined abilities.
 
 ### Skills (`SKILL.md`)
@@ -75,10 +73,8 @@ cud mcp add researcher https://mcp-server.example.com/sse --name search
 ## 🏗️ Architecture
 
 Cud is built on a robust, modular stack:
-- **Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraph) provides the stateful, cyclic reasoning loops.
+- **Orchestration**: [DeepAgents](https://docs.langchain.com/oss/python/deepagents/overview) provides the stateful, cyclic reasoning loops.
 - **LLM Engine**: [Ollama](https://ollama.com/) powers the local inference.
-- **Safety**: Built-in **Tool Guardrails** (Circuit Breakers) prevent infinite tool loops and save local compute.
-- **Efficiency**: deterministic message compression ensures agents don't get lost in long conversations.
 
 ## 🛠️ Development
 
