@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 from cud.config.paths import agent_home
@@ -18,9 +17,9 @@ def unit_path(agent: str) -> Path:
     return Path("~/.config/systemd/user").expanduser() / service_name(agent)
 
 
-def render_unit(agent: str, *, python_path: str | None = None) -> str:
-    python_path = python_path or sys.executable
+def render_unit(agent: str) -> str:
     home = agent_home(agent)
+    cud_path = shutil.which("cud") or f"{Path.home()}/.local/bin/cud"
     return f"""[Unit]
 Description=Cud Gateway - Agent: {agent}
 After=network-online.target
@@ -28,11 +27,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart={python_path} -m cud.gateway.run {agent}
+ExecStart={cud_path} gateway run {agent}
 Restart=always
 RestartSec=5
 RestartForceExitStatus=75
-Environment=\"CUD_HOME={home.parent.parent}\"
+Environment="CUD_HOME={home.parent.parent}"
 
 [Install]
 WantedBy=default.target
