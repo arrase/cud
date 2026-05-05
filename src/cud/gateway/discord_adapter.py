@@ -63,13 +63,22 @@ class DiscordGateway:
                     return
 
                 chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
-                await message.reply(chunks[0])
+                
+                if message.guild is not None:
+                    await message.reply(chunks[0])
+                else:
+                    await message.channel.send(chunks[0])
+                    
                 for chunk in chunks[1:]:
                     await message.channel.send(chunk)
 
             except Exception as exc:
                 traceback.print_exc()
-                await message.reply(f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`")
+                error_msg = f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`"
+                if message.guild is not None:
+                    await message.reply(error_msg)
+                else:
+                    await message.channel.send(error_msg)
 
         @bot.tree.command(name="new", description="Start a new Cud session in this Discord thread.")
         async def new_session(interaction: Any) -> None:
