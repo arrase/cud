@@ -12,9 +12,9 @@ import yaml
 @dataclass(slots=True)
 class ModelSettings:
     provider: str = "ollama"
-    name: str = "qwen2.5-coder:14b"
+    name: str = "gemma4:e4b"
     base_url: str = "http://localhost:11434"
-    temperature: float = 0.2
+    temperature: float = 0.0
     context_window: int = 32768
 
 
