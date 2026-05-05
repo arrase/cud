@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cud - Local-First Multi-Agent Framework</title>
+    <meta name="description" content="A lightweight, multi-agent framework powered by Ollama. Build specialized agents with persistent memory, tool-calling support, and MCP integration.">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <nav>
+                <a href="#" class="logo">🦙 Cud</a>
+                <ul class="nav-links">
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#usage">Usage</a></li>
+                    <li><a href="https://github.com/arrase/cud" target="_blank"><i class="fab fa-github"></i> GitHub</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="container">
+            <h1>Simplicity is the Ultimate Foundation</h1>
+            <p>Cud is a local-first, multi-agent framework designed to be lightweight and intuitive. <br>
+            Bring the power of autonomous AI agents directly to your machine with <a href="https://ollama.com/" target="_blank" style="color:var(--accent-color)">Ollama</a> and <a href="https://docs.langchain.com/oss/python/deepagents/overview" target="_blank" style="color:var(--accent-color)">DeepAgents</a>.</p>
+            
+            <div class="hero-buttons">
+                <a href="#usage" class="cta-button">Quick Start</a>
+                <a href="https://github.com/arrase/cud" class="secondary-button" target="_blank">View on GitHub</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="features">
+        <div class="container">
+            <h2>Core Principles</h2>
+            <div class="feature-list">
+                
+                <!-- Simplicity -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-feather"></i></div>
+                        <div>
+                            <h3>Simplicity First</h3>
+                            <p class="feature-description">No convoluted setups or bloated abstractions. Intuitive and easy to hack on.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Local & Private -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-user-shield"></i></div>
+                        <div>
+                            <h3>Local & Private</h3>
+                            <p class="feature-description">Powered by Ollama. Your data, prompts, and memory stay 100% on your machine.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Multi-Agent -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-users-gear"></i></div>
+                        <div>
+                            <h3>Multi-Agent</h3>
+                            <p class="feature-description">Create a fleet of specialized agents, each with its own persona and memory.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Transparent -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-file-code"></i></div>
+                        <div>
+                            <h3>Transparent</h3>
+                            <p class="feature-description">Behavior is defined in plain Markdown (<code>AGENT.md</code>). No black boxes.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tool-Rich -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-toolbox"></i></div>
+                        <div>
+                            <h3>Tool-Rich</h3>
+                            <p class="feature-description">Persistent shell sessions, surgical filesystem operations, and MCP support.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Daemon-Ready -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-server"></i></div>
+                        <div>
+                            <h3>Daemon-Ready</h3>
+                            <p class="feature-description">Seamlessly run your agents as background services using <code>systemd</code>.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section id="commands">
+        <div class="container">
+            <h2>Interaction & Commands</h2>
+            <div class="feature-list">
+
+                <!-- Discord Gateway -->
+                <div class="feature-item" style="grid-column: span 2;">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fab fa-discord"></i></div>
+                        <div>
+                            <h3>Discord Gateway</h3>
+                            <p class="feature-description">Interact with your agents through Discord slash commands.</p>
+                        </div>
+                    </div>
+                    <div class="feature-body">
+                        <div class="usage-box">
+                            <p class="usage-title">Slash Commands</p>
+                            <table class="cmd-table">
+                                <tr><td>/new</td><td>Start a fresh session context</td></tr>
+                                <tr><td>/model &lt;name&gt;</td><td>Switch agent's configured model</td></tr>
+                                <tr><td>/compress</td><td>Force context compaction on the thread</td></tr>
+                                <tr><td>/memory view</td><td>View the agent's long-term MEMORY.md</td></tr>
+                                <tr><td>/usage</td><td>Show runtime usage and agent details</td></tr>
+                                <tr><td>/reload</td><td>Reload tools and system prompt</td></tr>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Skills & MCP -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-wand-magic-sparkles"></i></div>
+                        <div>
+                            <h3>Skills & MCP</h3>
+                            <p class="feature-description">Extend capabilities with portable skills and MCP servers.</p>
+                        </div>
+                    </div>
+                    <div class="feature-body">
+                         <div class="feature-code">
+# Add MCP server
+cud mcp add researcher https://... --name search
+
+# Skill Definition (SKILL.md)
+# Drop it in agent/workspace/skills/</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <section id="usage">
+        <div class="container">
+            <h2>Getting Started</h2>
+            
+            <div class="command-group">
+                <p class="command-title">Requirements</p>
+                <p>Ensure you have <a href="https://ollama.com" target="_blank" style="color:var(--accent-color)">Ollama</a> running with a tool-calling capable model.</p>
+                <pre><code>ollama run gemma4:e4b</code></pre>
+            </div>
+
+            <div class="command-group">
+                <p class="command-title">Installation</p>
+                <pre><code>pipx install git+https://github.com/arrase/cud.git</code></pre>
+            </div>
+
+            <div class="command-group">
+                <p class="command-title">Create & Run Agent</p>
+                <p>Initialize an agent and start the Discord gateway.</p>
+                <pre><code>cud agent create researcher
+cud agent config researcher --model gemma4:e4b
+cud gateway setup researcher discord --token YOUR_TOKEN
+cud gateway start researcher</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>Developed with ❤️ for the AI community.</p>
+            <p>Powered by <a href="https://github.com/deep-agents/deepagents">DeepAgents</a> · <a href="https://ollama.com">Ollama</a></p>
+            <p><a href="https://github.com/arrase/cud">View Source on GitHub</a></p>
+        </div>
+    </footer>
+
+</body>
+</html>
