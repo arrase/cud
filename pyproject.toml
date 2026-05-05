@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Cud contributors" }]
 dependencies = [
-  "deepagents>=0.2.0",
+  "deepagents>=0.5.6",
   "discord.py>=2.4.0",
   "langchain>=1.0.0",
   "langchain-core>=1.0.0",
@@ -24,11 +24,6 @@ dependencies = [
   "rich>=13.7.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "pytest>=8.3.0",
-]
-
 [project.scripts]
 cud = "cud.cli:main"
 
@@ -38,13 +33,10 @@ packages = ["src/cud"]
 [tool.hatch.build.targets.sdist]
 include = [
   "/src",
-  "/tests",
-  "/design",
   "/pyproject.toml",
   "/README.md",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
 pythonpath = ["src"]
 

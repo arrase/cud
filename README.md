@@ -115,12 +115,19 @@ Cud is built on a robust, modular stack:
 
 ## 🛠️ Development
 
-```bash
-# Install development dependencies
-pip install -e .[dev]
+To set up a local development environment:
 
-# Run tests
-pytest
+```bash
+# Clone the repository
+git clone https://github.com/arrase/cud.git
+cd cud
+
+# Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate
+
+# Install development dependencies
+pip install -e .
 ```
 
 ---
