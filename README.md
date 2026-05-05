@@ -7,7 +7,7 @@
 - **Local-First & Private**: Your data, prompts, and memory stay on your machine.
 - **Multi-Agent by Design**: Create a fleet of specialized agents, each with its own persona, memory, and workspace.
 - **Transparent & Hackable**: Agent behavior is defined in plain Markdown. No hidden prompts, no black boxes.
-- **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, and the Model Context Protocol (MCP).
+- **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, SKILLs, and the Model Context Protocol (MCP).
 - **Daemon-Ready**: Seamlessly run your agents as background services using `systemd`.
 
 ## 🚀 Quick Start
