@@ -67,6 +67,21 @@ cud gateway start researcher
 
 ---
 
+## 💬 Discord Commands
+
+When interacting with your agent via the Discord Gateway, you can use the following slash commands:
+
+- `/new`: Start a new Cud session in the current Discord thread (clears context history).
+- `/model <model_name>`: Temporarily switch the agent's configured model.
+- `/compress [focus_topic]`: Force context compaction on the current thread.
+- `/usage`: Show Cud runtime usage summary (agent name, current model, and thread ID).
+- `/undo`: Remove the last exchange from the current thread.
+- `/reload`: Reload tools and the system prompt (`AGENT.md`) for this agent.
+- `/memory view`: View the contents of the agent's long-term `MEMORY.md`.
+- `/memory clear`: Clear the agent's long-term `MEMORY.md`.
+
+---
+
 ## 🧠 Key Concepts
 
 ### 📂 Agents & Workspaces
