@@ -57,7 +57,16 @@ class DiscordGateway:
                 state = self.session(thread_id)
                 async with message.channel.typing():
                     response = await asyncio.to_thread(state.runtime.invoke, message.content, thread_id=thread_id)
-                await message.reply(response.content[:1900])
+                
+                content = response.content
+                if not content:
+                    return
+
+                chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+                await message.reply(chunks[0])
+                for chunk in chunks[1:]:
+                    await message.channel.send(chunk)
+
             except Exception as exc:
                 traceback.print_exc()
                 await message.reply(f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`")
