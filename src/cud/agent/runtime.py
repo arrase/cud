@@ -64,7 +64,7 @@ class AgentRuntime:
 
         virtual_mode = not self.settings.runtime.allow_traversal
         default_backend = LocalShellBackend(root_dir=self.workspace_dir, virtual_mode=virtual_mode)
-        agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=virtual_mode)
+        agent_backend = FilesystemBackend(root_dir=self.agent_dir, virtual_mode=True)
         
         backend = CompositeBackend(
             default=default_backend,
