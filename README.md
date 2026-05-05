@@ -54,10 +54,11 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 - `MEMORY.md`: Long-term memory that the agent can read and update.
 - `history.db`: A SQLite-backed LangGraph checkpointer for conversation state.
 - `mcp.json`: MCP server configurations.
-- `skills/`: A directory for custom Markdown-defined abilities.
+- `workspace/`: The dedicated directory where the agent runs commands and edits files.
+- `workspace/skills/`: A directory for custom Markdown-defined abilities.
 
 ### Skills (`SKILL.md`)
-Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `skills/` directory, and it instantly gains those capabilities.
+Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.
 
 ### Model Context Protocol (MCP)
 Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:

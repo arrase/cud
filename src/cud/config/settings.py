@@ -35,7 +35,6 @@ class Settings:
     model: ModelSettings = field(default_factory=ModelSettings)
     runtime: RuntimeSettings = field(default_factory=RuntimeSettings)
     gateway: GatewaySettings = field(default_factory=GatewaySettings)
-    workspace: str = "workspace"
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> "Settings":
@@ -44,7 +43,6 @@ class Settings:
             model=_dataclass_from_dict(ModelSettings, raw.get("model")),
             runtime=_dataclass_from_dict(RuntimeSettings, raw.get("runtime")),
             gateway=_dataclass_from_dict(GatewaySettings, raw.get("gateway")),
-            workspace=str(raw.get("workspace", "workspace")),
         )
 
     def to_dict(self) -> dict[str, Any]:

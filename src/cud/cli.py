@@ -214,7 +214,7 @@ def cmd_gateway_status(args: argparse.Namespace) -> int:
 
 def cmd_tools_install(args: argparse.Namespace) -> int:
     directory = agent_home(args.agent)
-    skills_dir = directory / "skills"
+    skills_dir = directory / "workspace" / "skills"
     skills_dir.mkdir(exist_ok=True)
     if args.path.startswith("http://") or args.path.startswith("https://"):
         name = args.path.rstrip("/").rsplit("/", 1)[-1].removesuffix(".md") or "remote_skill"

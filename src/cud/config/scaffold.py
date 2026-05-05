@@ -22,8 +22,9 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
         raise FileExistsError(f"agent already exists: {target}")
 
     target.mkdir(parents=True, exist_ok=True)
-    (target / "skills").mkdir(exist_ok=True)
-    (target / "workspace").mkdir(exist_ok=True)
+    workspace_dir = target / "workspace"
+    workspace_dir.mkdir(exist_ok=True)
+    (workspace_dir / "skills").mkdir(exist_ok=True)
     template_root = files("cud.templates")
     for filename in TEMPLATE_NAMES:
         destination = target / filename

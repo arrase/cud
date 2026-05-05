@@ -40,7 +40,7 @@ class AgentRuntime:
 
     @property
     def workspace_dir(self) -> Path:
-        return self.agent_dir / self.settings.workspace
+        return self.agent_dir / "workspace"
 
     def reload(self) -> None:
         self._exit_stack.close()
@@ -73,7 +73,7 @@ class AgentRuntime:
             system_prompt=self.prompt,
             backend=backend,
             memory=["/agent/MEMORY.md"],
-            skills=["/agent/skills/"],
+            skills=["/agent/workspace/skills/"],
             checkpointer=self._sqlite_checkpointer(),
             middleware=[create_summarization_tool_middleware(model, backend)],
             name=f"cud-{self.agent_dir.name}",

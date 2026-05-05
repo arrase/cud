@@ -2,7 +2,7 @@ model:
   provider: ollama
   name: gemma4:e4b
   base_url: http://localhost:11434
-  temperature: 0.2
+  temperature: 0.0
   context_window: 32768
 runtime:
   allow_traversal: true
@@ -10,5 +10,3 @@ gateway:
   provider: discord
   token: ""
   mode: bot
-workspace: workspace
-
