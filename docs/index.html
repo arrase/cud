@@ -114,7 +114,47 @@
     <section id="commands">
         <div class="container">
             <h2>Interaction & Commands</h2>
-            <div class="feature-list">
+            <div class="feature-list feature-list-2col">
+
+                <!-- Skills & MCP -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-wand-magic-sparkles"></i></div>
+                        <div>
+                            <h3>Skills & MCP</h3>
+                            <p class="feature-description">Extend capabilities with portable skills and MCP servers.</p>
+                        </div>
+                    </div>
+                    <div class="feature-body">
+                         <div class="feature-code">
+# Add MCP server
+cud mcp add researcher https://... --name search
+
+# Skill Definition (SKILL.md)
+# Drop it in agent/workspace/skills/</div>
+                    </div>
+                </div>
+
+                <!-- Periodic Tasks -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-clock"></i></div>
+                        <div>
+                            <h3>Periodic Tasks</h3>
+                            <p class="feature-description">Run scheduled tasks autonomously using cron expressions.</p>
+                        </div>
+                    </div>
+                    <div class="feature-body">
+                         <div class="feature-code">
+# Task Definition (TASK.md)
+# Drop it in agent/workspace/tasks/
+---
+schedule: "0 8 * * *"
+channel_id: 123456789
+---
+Generate daily report</div>
+                    </div>
+                </div>
 
                 <!-- Discord Gateway -->
                 <div class="feature-item" style="grid-column: span 2;">
@@ -137,25 +177,6 @@
                                 <tr><td>/reload</td><td>Reload tools and system prompt</td></tr>
                             </table>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Skills & MCP -->
-                <div class="feature-item">
-                    <div class="feature-header">
-                        <div class="feature-icon"><i class="fas fa-wand-magic-sparkles"></i></div>
-                        <div>
-                            <h3>Skills & MCP</h3>
-                            <p class="feature-description">Extend capabilities with portable skills and MCP servers.</p>
-                        </div>
-                    </div>
-                    <div class="feature-body">
-                         <div class="feature-code">
-# Add MCP server
-cud mcp add researcher https://... --name search
-
-# Skill Definition (SKILL.md)
-# Drop it in agent/workspace/skills/</div>
                     </div>
                 </div>
 

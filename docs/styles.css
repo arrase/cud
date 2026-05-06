@@ -186,6 +186,12 @@ h2::after {
     gap: 30px;
 }
 
+.feature-list-2col {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 30px;
+}
+
 .feature-item {
     background-color: var(--code-bg);
     border-radius: 16px;
@@ -452,8 +458,12 @@ footer a:hover {
         margin: 0 auto;
     }
 
-    .feature-list {
+    .feature-list, .feature-list-2col {
         grid-template-columns: 1fr;
+    }
+
+    .feature-item[style*="grid-column"] {
+        grid-column: 1 / -1 !important;
     }
 
     .gallery-grid {
