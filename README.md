@@ -96,6 +96,12 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 ### 🪄 Skills (`SKILL.md`)
 Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.
 
+### 🗜️ Context Compression
+To keep agents fast and prevent them from hitting token limits during long conversations, Cud features automatic context compression.
+- **Automatic Summarization**: When a conversation gets too long, older messages are automatically summarized by the LLM.
+- **No Data Lost**: The full, uncompressed conversation history is safely offloaded to a markdown file in the agent's workspace (`workspace/conversation_history/<thread_id>.md`).
+- **Manual Compaction**: Agents have access to a `compact_conversation` tool, allowing them to proactively free up context when finishing a large task.
+
 ### ⏱️ Periodic Tasks
 Agents can execute scheduled, periodic tasks autonomously. Tasks are defined as Markdown files (`TASK.md`) located in the agent's `workspace/tasks/<name>/` directory.
 - Use a YAML frontmatter to configure the `schedule` (cron expression) and the destination (`channel_id` or `user_id`).
