@@ -233,9 +233,13 @@ def cmd_tools_install(args: argparse.Namespace) -> int:
         if target.exists():
             console.print(f"[red]Skill already exists: {target}[/red]")
             return 2
+        try:
+            with urllib.request.urlopen(args.path, timeout=10) as response:
+                content = response.read().decode("utf-8")
+        except (urllib.error.URLError, TimeoutError) as exc:
+            console.print(f"[red]Failed to download skill:[/red] {exc}")
+            return 1
         target.mkdir()
-        with urllib.request.urlopen(args.path, timeout=10) as response:
-            content = response.read().decode("utf-8")
         (target / "SKILL.md").write_text(content, encoding="utf-8")
         console.print(f"Installed skill at {target}")
         return 0

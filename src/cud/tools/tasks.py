@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import yaml
+from cud.tools._frontmatter import parse_frontmatter
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +38,7 @@ def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
 
 def _parse_task_file(task_file: Path) -> TaskCard | None:
     text = task_file.read_text(encoding="utf-8")
-    metadata, body = _split_frontmatter(text)
+    metadata, body = parse_frontmatter(text)
     name = metadata.get("name") or task_file.parent.name
     schedule = metadata.get("schedule")
     if not schedule:
@@ -59,19 +58,6 @@ def _parse_task_file(task_file: Path) -> TaskCard | None:
     )
 
 
-def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    match = re.search(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
-    if not match:
-        return {}, text
-    try:
-        metadata = yaml.safe_load(match.group(1))
-        if not isinstance(metadata, dict):
-            metadata = {}
-    except yaml.YAMLError:
-        metadata = {}
-    return metadata, text[match.end() :]
-
-
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
@@ -79,3 +65,4 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+

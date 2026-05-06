@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import traceback
-from dataclasses import dataclass
+import logging
 from typing import Any
 
 import discord
@@ -17,12 +16,9 @@ from cud.config.settings import load_settings, save_settings
 from cud.gateway.scheduler import TaskScheduler
 from cud.gateway.threading import discord_thread_id
 
+log = logging.getLogger(__name__)
+
 DISCORD_MAX_LENGTH = 1900
-
-
-@dataclass(slots=True)
-class SessionState:
-    runtime: AgentRuntime
 
 
 class DiscordGateway:
@@ -31,23 +27,23 @@ class DiscordGateway:
         self.agent_dir = agent_home(agent)
         self.settings = load_settings(self.agent_dir)
         self.verbose = verbose
-        self.sessions: dict[str, SessionState] = {}
+        self.sessions: dict[str, AgentRuntime] = {}
         self.bot: commands.Bot | None = None
         self.scheduler = TaskScheduler(self)
 
     # -- Session management --------------------------------------------------
 
-    def session(self, thread_id: str) -> SessionState:
-        state = self.sessions.get(thread_id)
-        if state is None:
-            state = SessionState(runtime=AgentRuntime(self.agent_dir, thread_id=thread_id))
-            self.sessions[thread_id] = state
-        return state
+    def session(self, thread_id: str) -> AgentRuntime:
+        runtime = self.sessions.get(thread_id)
+        if runtime is None:
+            runtime = AgentRuntime(self.agent_dir, thread_id=thread_id)
+            self.sessions[thread_id] = runtime
+        return runtime
 
     def _reload_sessions(self) -> None:
         self.settings = load_settings(self.agent_dir)
-        for state in self.sessions.values():
-            state.runtime.reload()
+        for runtime in self.sessions.values():
+            runtime.reload()
 
     # -- Message handling ----------------------------------------------------
 
@@ -56,9 +52,9 @@ class DiscordGateway:
             return
         thread_id = discord_thread_id(message)
         try:
-            state = self.session(thread_id)
+            runtime = self.session(thread_id)
             async with message.channel.typing():
-                response = await asyncio.to_thread(state.runtime.invoke, message.content, thread_id=thread_id)
+                response = await asyncio.to_thread(runtime.invoke, message.content, thread_id=thread_id)
 
             content = response.content
             if not content:
@@ -67,21 +63,14 @@ class DiscordGateway:
             chunks = _split_message(content)
             first, rest = chunks[0], chunks[1:]
 
-            if message.guild is not None:
-                await message.reply(first)
-            else:
-                await message.channel.send(first)
-
+            await _send_response(message, first)
             for chunk in rest:
                 await message.channel.send(chunk)
 
         except Exception as exc:
-            traceback.print_exc()
+            log.exception("Error handling message in thread %s", thread_id)
             error_msg = f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`"
-            if message.guild is not None:
-                await message.reply(error_msg)
-            else:
-                await message.channel.send(error_msg)
+            await _send_response(message, error_msg)
 
     # -- Slash commands ------------------------------------------------------
 
@@ -89,8 +78,8 @@ class DiscordGateway:
         thread_id = discord_thread_id(interaction.channel)
         old = self.sessions.pop(thread_id, None)
         if old:
-            await asyncio.to_thread(old.runtime.clear_history)
-            old.runtime.close()
+            await asyncio.to_thread(old.clear_history)
+            old.close()
         self.session(thread_id)
         await interaction.response.send_message("New Cud session started. History cleared.", ephemeral=True)
 
@@ -99,11 +88,6 @@ class DiscordGateway:
         save_settings(self.agent_dir, self.settings)
         self._reload_sessions()
         await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
-
-    async def cmd_compress(self, interaction: Any, focus_topic: str | None = None) -> None:
-        await interaction.response.send_message(
-            "Compaction will run on the next model-managed context window.", ephemeral=True
-        )
 
     async def cmd_usage(self, interaction: Any) -> None:
         thread_id = discord_thread_id(interaction.channel)
@@ -114,7 +98,7 @@ class DiscordGateway:
 
     async def cmd_undo(self, interaction: Any) -> None:
         thread_id = discord_thread_id(interaction.channel)
-        result = self.session(thread_id).runtime.undo_last_exchange(thread_id=thread_id)
+        result = self.session(thread_id).undo_last_exchange(thread_id=thread_id)
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_reload(self, interaction: Any) -> None:
@@ -147,7 +131,7 @@ class DiscordGateway:
             await bot.tree.sync()
             bot.loop.create_task(gw.scheduler.run())
             if gw.verbose:
-                print(f"Discord gateway ready as {bot.user}")
+                log.info("Discord gateway ready as %s", bot.user)
 
         @bot.event
         async def on_message(message: Any) -> None:
@@ -163,10 +147,6 @@ class DiscordGateway:
         @app_commands.describe(model_name="Ollama model id")
         async def slash_model(interaction: Any, model_name: str) -> None:
             await gw.cmd_model(interaction, model_name)
-
-        @bot.tree.command(name="compress", description="Force context compaction on the current thread.")
-        async def slash_compress(interaction: Any, focus_topic: str | None = None) -> None:
-            await gw.cmd_compress(interaction, focus_topic)
 
         @bot.tree.command(name="usage", description="Show Cud runtime usage summary.")
         async def slash_usage(interaction: Any) -> None:
@@ -204,6 +184,14 @@ class DiscordGateway:
 # ---------------------------------------------------------------------------
 
 
+async def _send_response(message: Any, content: str) -> None:
+    """Reply in guilds, send directly in DMs."""
+    if message.guild is not None:
+        await message.reply(content)
+    else:
+        await message.channel.send(content)
+
+
 def _split_message(content: str, limit: int = DISCORD_MAX_LENGTH) -> list[str]:
     """Split *content* into chunks that fit within Discord's message limit.
 
@@ -227,8 +215,9 @@ def _split_message(content: str, limit: int = DISCORD_MAX_LENGTH) -> list[str]:
         if cut <= 0:
             cut = limit  # Hard cut — no good break point.
 
-        chunks.append(remaining[:cut])
+        chunk = remaining[:cut]
+        if chunk:
+            chunks.append(chunk)
         remaining = remaining[cut:].lstrip("\n")
 
     return chunks
-

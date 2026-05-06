@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -64,18 +68,26 @@ async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[
     tools = _filter_tools(await client.get_tools(), config)
 
     async def _close() -> None:
-        # MultiServerMCPClient exposes an async close; wrap for sync callers.
         if hasattr(client, "close"):
             await client.close()
 
     def cleanup() -> None:
-        import asyncio
         try:
             asyncio.get_running_loop()
         except RuntimeError:
             asyncio.run(_close())
         else:
-            asyncio.ensure_future(_close())
+            task = asyncio.ensure_future(_close())
+            task.add_done_callback(_log_cleanup_error)
 
     return tools, cleanup
+
+
+def _log_cleanup_error(task: asyncio.Task[None]) -> None:
+    """Log exceptions from fire-and-forget MCP cleanup tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.warning("MCP client cleanup failed: %s", exc)
 

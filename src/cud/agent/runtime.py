@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import logging
 import contextlib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -172,15 +173,19 @@ def _role(message: Any) -> str:
     return message.__class__.__name__.replace("Message", "").lower()
 
 
+_log = logging.getLogger(__name__)
+
+
 def _run_async_sync(coro: Any) -> Any:
     """Run an async coroutine from synchronous code, regardless of context."""
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        # No event loop running — simplest path.
+        _log.debug("_run_async_sync: no event loop — using asyncio.run()")
         return asyncio.run(coro)
     # Inside a running loop (e.g. Discord's asyncio.to_thread). Spin up a
     # dedicated thread so asyncio.run() can create its own loop.
+    _log.debug("_run_async_sync: event loop detected — using thread pool")
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(asyncio.run, coro).result()
 

@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import traceback
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from croniter import croniter
 
 from cud.tools.tasks import TaskCard, discover_tasks
+
+log = logging.getLogger(__name__)
 
 
 class TaskScheduler:
@@ -67,22 +69,22 @@ class TaskScheduler:
         from cud.gateway.discord_adapter import _split_message
 
         thread_id = f"task-{uuid4().hex}"
-        state = self.gateway.session(thread_id)
+        runtime = self.gateway.session(thread_id)
         try:
             response = await asyncio.to_thread(
-                state.runtime.invoke, task.prompt, thread_id=thread_id,
+                runtime.invoke, task.prompt, thread_id=thread_id,
             )
             target = await self._resolve_target(task)
             if target is None:
-                print(f"[scheduler] task '{task.name}': no valid target (channel_id or user_id), skipping output")
+                log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
                 return
             for chunk in _split_message(response.content):
                 await target.send(chunk)
         except Exception:
-            traceback.print_exc()
+            log.exception("Task '%s' failed", task.name)
         finally:
             self.gateway.sessions.pop(thread_id, None)
-            state.runtime.close()
+            runtime.close()
 
     async def _resolve_target(self, task: TaskCard) -> object | None:
         """Resolve the Discord destination: channel or DM."""

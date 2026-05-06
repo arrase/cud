@@ -63,7 +63,7 @@ def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: boo
 
 def _is_directory_resource(resource: Any) -> bool:
     """Check if an importlib.resources traversable is a directory."""
-    return hasattr(resource, "iterdir") and not hasattr(resource, "open") or resource.is_dir()
+    return hasattr(resource, "iterdir") and (not hasattr(resource, "open") or resource.is_dir())
 
 
 def _init_history_db(path: Path) -> None:
