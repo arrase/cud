@@ -195,7 +195,8 @@ class DiscordGateway:
         token = self.settings.gateway.token
         if not token:
             raise RuntimeError("gateway.token is empty; run `cud gateway setup <agent> discord --token ...`")
-        await bot.start(token)
+        async with bot:
+            await bot.start(token)
 
 
 # ---------------------------------------------------------------------------
