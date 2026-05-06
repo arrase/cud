@@ -12,6 +12,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+from croniter import croniter
 from rich.console import Console
 from rich.table import Table
 
@@ -19,6 +20,7 @@ from cud.config.paths import agent_home, agents_root
 from cud.config.scaffold import create_agent, delete_agent, list_agents
 from cud.config.settings import load_settings, save_settings
 from cud.gateway import systemd
+from cud.gateway.run import run_gateway
 from cud.tools.mcp import load_mcp_config, save_mcp_config
 from cud.tools.tasks import discover_tasks
 
@@ -188,9 +190,8 @@ def cmd_gateway_setup(args: argparse.Namespace) -> int:
 
 
 def cmd_gateway_run(args: argparse.Namespace) -> int:
-    from cud.gateway.run import main as gateway_main
-
-    return gateway_main([args.agent] + (["--verbose"] if args.verbose else []))
+    run_gateway(args.agent, verbose=args.verbose)
+    return 0
 
 
 def cmd_gateway_start(args: argparse.Namespace) -> int:
@@ -324,7 +325,6 @@ def cmd_task_list(args: argparse.Namespace) -> int:
         next_run = "—"
         if task.enabled:
             try:
-                from croniter import croniter
                 cron = croniter(task.schedule, now)
                 next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
             except Exception:
@@ -340,6 +340,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
+    except KeyboardInterrupt:
+        console.print()
+        console.print("[yellow]Canceled by user[/yellow]")
+        return 130
     except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
         return 1
