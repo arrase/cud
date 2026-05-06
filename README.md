@@ -105,6 +105,21 @@ Agents can execute scheduled, periodic tasks autonomously. Tasks are defined as 
 - Use the `/reload` command in Discord to activate changes.
 - Check active tasks via the CLI: `cud task list <agent>`.
 
+**Example: `workspace/tasks/daily-news/TASK.md`**
+```markdown
+---
+name: "Daily Tech News"
+description: "Searches for latest AI news and summarizes it"
+schedule: "0 9 * * *"
+channel_id: 123456789012345678
+enabled: true
+---
+
+Search the web for the latest AI news.
+Summarize the top 3 stories.
+Make it sound enthusiastic!
+```
+
 ### 🌐 Model Context Protocol (MCP)
 Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:
 ```bash
