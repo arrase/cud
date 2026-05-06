@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any
 
 import discord
@@ -14,11 +15,11 @@ from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings, save_settings
 from cud.gateway.scheduler import TaskScheduler
-from cud.gateway.threading import discord_thread_id
 
 log = logging.getLogger(__name__)
 
 DISCORD_MAX_LENGTH = 1900
+_SAFE = re.compile(r"[^A-Za-z0-9_.:-]+")
 
 
 class DiscordGateway:
@@ -32,6 +33,16 @@ class DiscordGateway:
         self.scheduler = TaskScheduler(self)
 
     # -- Session management --------------------------------------------------
+
+    def _get_thread_id(self, message_or_channel: Any) -> str:
+        """Map a Discord channel/thread/message object to a stable LangGraph thread_id."""
+        channel = getattr(message_or_channel, "channel", message_or_channel)
+        guild = getattr(channel, "guild", None)
+        guild_id = getattr(guild, "id", "dm")
+        channel_id = getattr(channel, "id", None)
+        if channel_id is None:
+            channel_id = getattr(message_or_channel, "id", "unknown")
+        return _SAFE.sub("_", f"discord:{guild_id}:{channel_id}")
 
     def session(self, thread_id: str) -> AgentRuntime:
         runtime = self.sessions.get(thread_id)
@@ -50,7 +61,7 @@ class DiscordGateway:
     async def handle_message(self, message: Any) -> None:
         if message.author.bot or not message.content:
             return
-        thread_id = discord_thread_id(message)
+        thread_id = self._get_thread_id(message)
         try:
             runtime = self.session(thread_id)
             async with message.channel.typing():
@@ -75,7 +86,7 @@ class DiscordGateway:
     # -- Slash commands ------------------------------------------------------
 
     async def cmd_new(self, interaction: Any) -> None:
-        thread_id = discord_thread_id(interaction.channel)
+        thread_id = self._get_thread_id(interaction.channel)
         old = self.sessions.pop(thread_id, None)
         if old:
             await asyncio.to_thread(old.clear_history)
@@ -90,14 +101,14 @@ class DiscordGateway:
         await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
 
     async def cmd_usage(self, interaction: Any) -> None:
-        thread_id = discord_thread_id(interaction.channel)
+        thread_id = self._get_thread_id(interaction.channel)
         await interaction.response.send_message(
             f"agent=`{self.agent}` model=`{self.settings.model.name}` thread=`{thread_id}`",
             ephemeral=True,
         )
 
     async def cmd_undo(self, interaction: Any) -> None:
-        thread_id = discord_thread_id(interaction.channel)
+        thread_id = self._get_thread_id(interaction.channel)
         result = self.session(thread_id).undo_last_exchange(thread_id=thread_id)
         await interaction.response.send_message(result, ephemeral=True)
 
