@@ -98,19 +98,12 @@ def _resolve_env(env: dict[str, str]) -> dict[str, str] | None:
     """
     if not env:
         return {}
-    resolved = {}
+    resolved: dict[str, str] = {}
     for key, value in env.items():
-        missing: list[str] = []
-
-        def _repl(m: re.Match[str]) -> str:
-            val = os.environ.get(m.group(1))
-            if val is None:
-                missing.append(m.group(1))
-                return m.group(0)
-            return val
-
-        resolved[key] = _ENV_RE.sub(_repl, value)
+        referenced = _ENV_RE.findall(value)
+        missing = [var for var in referenced if var not in os.environ]
         if missing:
             _log.warning("Missing environment variables: %s", ", ".join(missing))
             return None
+        resolved[key] = _ENV_RE.sub(lambda m: os.environ[m.group(1)], value)
     return resolved

@@ -66,7 +66,7 @@ class TaskScheduler:
         return [t for t in discover_tasks(tasks_dir) if t.enabled]
 
     async def _execute(self, task: TaskCard) -> None:
-        from cud.gateway.discord_adapter import _split_message
+        from cud.gateway._discord_utils import split_message
 
         thread_id = f"task-{uuid4().hex}"
         runtime = self.gateway.session(thread_id)
@@ -78,7 +78,7 @@ class TaskScheduler:
             if target is None:
                 log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
                 return
-            for chunk in _split_message(response.content):
+            for chunk in split_message(response.content):
                 await target.send(chunk)
         except Exception:
             log.exception("Task '%s' failed", task.name)
@@ -119,7 +119,7 @@ def _next_scheduled(tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
                 best_delay = delay
                 best_task = task
         except (ValueError, KeyError):
-            # Invalid cron expression — skip.
+            log.debug("Task '%s': invalid cron expression '%s', skipping", task.name, task.schedule)
             continue
 
     if best_task is None:

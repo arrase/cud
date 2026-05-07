@@ -101,7 +101,7 @@ def load_settings(agent_dir: Path) -> Settings:
 
 def save_settings(agent_dir: Path, settings: Settings) -> None:
     agent_dir.mkdir(parents=True, exist_ok=True)
-    text = yaml.safe_dump(settings.to_dict(), sort_keys=False, allow_unicode=False)
+    text = yaml.safe_dump(settings.to_dict(), sort_keys=False, allow_unicode=True)
     (agent_dir / "settings.yaml").write_text(text, encoding="utf-8")
 
 

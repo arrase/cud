@@ -66,30 +66,7 @@ async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[
 
     client = MultiServerMCPClient(config.servers)
     tools = _filter_tools(await client.get_tools(), config)
-
-    async def _close() -> None:
-        if hasattr(client, "close"):
-            await client.close()
-
-    def cleanup() -> None:
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(_close())
-        else:
-            task = asyncio.ensure_future(_close())
-            task.add_done_callback(_log_cleanup_error)
-
-    return tools, cleanup
-
-
-def _log_cleanup_error(task: asyncio.Task[None]) -> None:
-    """Log exceptions from fire-and-forget MCP cleanup tasks."""
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        log.warning("MCP client cleanup failed: %s", exc)
+    return tools, _make_cleanup(client)
 
 
 async def load_mcp_tools_for_servers(
@@ -105,6 +82,16 @@ async def load_mcp_tools_for_servers(
 
     client = MultiServerMCPClient(servers)
     tools = await client.get_tools()
+    return tools, _make_cleanup(client)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], None]:
+    """Build a synchronous cleanup callback for an MCP client."""
 
     async def _close() -> None:
         if hasattr(client, "close"):
@@ -119,5 +106,14 @@ async def load_mcp_tools_for_servers(
             task = asyncio.ensure_future(_close())
             task.add_done_callback(_log_cleanup_error)
 
-    return tools, cleanup
+    return cleanup
+
+
+def _log_cleanup_error(task: asyncio.Task[None]) -> None:
+    """Log exceptions from fire-and-forget MCP cleanup tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.warning("MCP client cleanup failed: %s", exc)
 

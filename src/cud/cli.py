@@ -116,6 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+
 def cmd_agent_create(args: argparse.Namespace) -> int:
     path = create_agent(args.name, template=args.template)
     console.print(f"Created agent [bold]{args.name}[/bold] at {path}")

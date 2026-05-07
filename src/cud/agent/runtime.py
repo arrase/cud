@@ -24,7 +24,7 @@ from cud.tools.mcp import load_mcp_tools_managed
 @dataclass(slots=True)
 class RuntimeResponse:
     content: str
-    raw: Any = None
+    raw: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -137,7 +137,7 @@ class AgentRuntime:
             db_path.unlink()
         except OSError as exc:
             return f"Failed to clear history: {exc}"
-        self.graph = self._build_graph()
+        self.reload()
         return "History cleared."
 
     def close(self) -> None:
