@@ -58,10 +58,7 @@ class AgentRuntime:
         return self.agent_dir / "workspace"
 
     async def reload(self) -> None:
-        if self.graph is not None:
-            await self._exit_stack.aclose()
-
-        _run_async_sync(self._exit_stack.aclose())
+        await self._exit_stack.aclose()
         self._exit_stack = contextlib.AsyncExitStack()
         self.settings = load_settings(self.agent_dir)
         agent_md = self.agent_dir / "AGENT.md"
@@ -130,8 +127,6 @@ class AgentRuntime:
         return _response_from_raw(raw)
 
     async def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
-        if self.graph is None:
-            await self.reload()
         if self.graph is None:
             await self.reload()
         if self.graph is None:
