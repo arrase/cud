@@ -114,7 +114,7 @@
     <section id="commands">
         <div class="container">
             <h2>Interaction & Commands</h2>
-            <div class="feature-list feature-list-2col">
+            <div class="feature-list feature-list-mixed">
 
                 <!-- Skills & MCP -->
                 <div class="feature-item">
@@ -156,6 +156,22 @@ Generate daily report</div>
                     </div>
                 </div>
 
+                <!-- Context Compression -->
+                <div class="feature-item">
+                    <div class="feature-header">
+                        <div class="feature-icon"><i class="fas fa-compress-arrows-alt"></i></div>
+                        <div>
+                            <h3>Context Compression</h3>
+                            <p class="feature-description">Automatic summarization prevents context limits. Full history is saved to the workspace.</p>
+                        </div>
+                    </div>
+                    <div class="feature-body">
+                         <div class="feature-code">
+<span class="code-comment"># Agents can manually compress context:</span>
+Action: call compact_conversation</div>
+                    </div>
+                </div>
+
                 <!-- Custom Subagents -->
                 <div class="feature-item">
                     <div class="feature-header">
@@ -178,22 +194,6 @@ subagents:
         args: ["-y", "@mcp/server-brave"]
         env:
           BRAVE_API_KEY: "${BRAVE_API_KEY}"</div>
-                    </div>
-                </div>
-
-                <!-- Context Compression -->
-                <div class="feature-item">
-                    <div class="feature-header">
-                        <div class="feature-icon"><i class="fas fa-compress-arrows-alt"></i></div>
-                        <div>
-                            <h3>Context Compression</h3>
-                            <p class="feature-description">Automatic summarization prevents context limits. Full history is saved to the workspace.</p>
-                        </div>
-                    </div>
-                    <div class="feature-body">
-                         <div class="feature-code">
-<span class="code-comment"># Agents can manually compress context:</span>
-Action: call compact_conversation</div>
                     </div>
                 </div>
 
