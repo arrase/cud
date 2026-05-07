@@ -36,28 +36,36 @@ class TaskScheduler:
         """Main loop — must be launched as an asyncio task."""
         tasks = self._load_tasks()
         while True:
-            task, delay = _next_scheduled(tasks)
-
-            if task is None:
-                # No tasks: sleep indefinitely until reload.
-                await self._reload_event.wait()
-                self._reload_event.clear()
-                tasks = self._load_tasks()
-                continue
-
-            # Sleep until the next task fires OR a reload arrives.
             try:
-                await asyncio.wait_for(self._reload_event.wait(), timeout=delay)
-                # Reload arrived before the task was due.
-                self._reload_event.clear()
-                tasks = self._load_tasks()
-                continue
-            except asyncio.TimeoutError:
-                # Timeout expired — time to execute.
-                pass
+                task, delay = _next_scheduled(tasks)
 
-            await self._execute(task)
-            tasks = self._load_tasks()
+                if task is None:
+                    # No tasks: sleep indefinitely until reload.
+                    await self._reload_event.wait()
+                    self._reload_event.clear()
+                    tasks = self._load_tasks()
+                    continue
+
+                # Sleep until the next task fires OR a reload arrives.
+                try:
+                    await asyncio.wait_for(self._reload_event.wait(), timeout=delay)
+                    # Reload arrived before the task was due.
+                    self._reload_event.clear()
+                    tasks = self._load_tasks()
+                    continue
+                except asyncio.TimeoutError:
+                    # Timeout expired — time to execute.
+                    pass
+
+                await self._execute(task)
+                tasks = self._load_tasks()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("Scheduler loop error; retrying in 30s")
+                await asyncio.sleep(30)
+                tasks = self._load_tasks()
 
     # -- internals -----------------------------------------------------------
 

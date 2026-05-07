@@ -114,3 +114,5 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.context_window must be positive")
     if settings.model.temperature < 0:
         raise ValueError("model.temperature must be non-negative")
+    if settings.gateway.token and settings.gateway.provider != "discord":
+        raise ValueError("v1 supports only the discord gateway provider")

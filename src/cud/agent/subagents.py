@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from contextlib import ExitStack
+from contextlib import AsyncExitStack
 from typing import Any, Callable
 
 from langchain_ollama import ChatOllama
@@ -21,7 +21,7 @@ def build_subagents(
     subagent_settings: list[SubAgentSettings],
     *,
     model_settings: ModelSettings,
-    exit_stack: ExitStack,
+    exit_stack: AsyncExitStack,
     run_async: Callable[..., Any],
 ) -> list[dict[str, Any]]:
     """Convert ``SubAgentSettings`` into dicts for ``create_deep_agent(subagents=...)``."""
@@ -37,7 +37,7 @@ def _build_spec(
     sa: SubAgentSettings,
     *,
     model_settings: ModelSettings,
-    exit_stack: ExitStack,
+    exit_stack: AsyncExitStack,
     run_async: Callable[..., Any],
 ) -> dict[str, Any] | None:
     spec: dict[str, Any] = {
@@ -66,7 +66,7 @@ def _build_spec(
 def _load_mcp_tools(
     subagent_name: str,
     mcp_servers: list[SubAgentMCPServer],
-    exit_stack: ExitStack,
+    exit_stack: AsyncExitStack,
     run_async: Callable[..., Any],
 ) -> list[Any]:
     servers: dict[str, dict[str, Any]] = {}
@@ -84,7 +84,7 @@ def _load_mcp_tools(
     try:
         tools, cleanup = run_async(load_mcp_tools_for_servers(servers))
         if cleanup:
-            exit_stack.callback(cleanup)
+            exit_stack.push_async_callback(cleanup)
         return tools
     except Exception as exc:
         _log.warning("Subagent '%s': MCP tools failed to load: %s", subagent_name, exc)

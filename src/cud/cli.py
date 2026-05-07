@@ -31,7 +31,19 @@ console = Console()
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cud", description="Local multi-agent framework for Ollama.")
     sub = parser.add_subparsers(dest="command", required=True)
+    _register_agent_commands(sub)
+    _register_gateway_commands(sub)
+    _register_tools_commands(sub)
+    _register_mcp_commands(sub)
+    _register_engine_commands(sub)
+    _register_task_commands(sub)
+    completion = sub.add_parser("completion", help="Generate shell completion")
+    completion.add_argument("shell", choices=["bash", "zsh"])
+    completion.set_defaults(func=cmd_completion)
+    return parser
 
+
+def _register_agent_commands(sub: argparse._SubParsersAction) -> None:
     agent = sub.add_parser("agent", help="Manage agents")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
     create = agent_sub.add_parser("create", help="Create an agent")
@@ -54,6 +66,8 @@ def build_parser() -> argparse.ArgumentParser:
     config.add_argument("--no-traversal", action="store_false", dest="allow_traversal")
     config.set_defaults(func=cmd_agent_config)
 
+
+def _register_gateway_commands(sub: argparse._SubParsersAction) -> None:
     gateway = sub.add_parser("gateway", help="Manage gateway daemon")
     gateway_sub = gateway.add_subparsers(dest="gateway_command", required=True)
     setup = gateway_sub.add_parser("setup", help="Configure gateway credentials")
@@ -75,6 +89,8 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("agent")
     status.set_defaults(func=cmd_gateway_status)
 
+
+def _register_tools_commands(sub: argparse._SubParsersAction) -> None:
     tools = sub.add_parser("tools", help="Manage tools")
     tools_sub = tools.add_subparsers(dest="tools_command", required=True)
     tools_install = tools_sub.add_parser("install", help="Install a skill from a local path")
@@ -82,6 +98,8 @@ def build_parser() -> argparse.ArgumentParser:
     tools_install.add_argument("path")
     tools_install.set_defaults(func=cmd_tools_install)
 
+
+def _register_mcp_commands(sub: argparse._SubParsersAction) -> None:
     mcp = sub.add_parser("mcp", help="Manage MCP servers")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_add = mcp_sub.add_parser("add", help="Add an MCP server")
@@ -94,6 +112,8 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_list.add_argument("agent")
     mcp_list.set_defaults(func=cmd_mcp_list)
 
+
+def _register_engine_commands(sub: argparse._SubParsersAction) -> None:
     engine = sub.add_parser("engine", help="Manage Ollama")
     engine_sub = engine.add_subparsers(dest="engine_command", required=True)
     engine_status = engine_sub.add_parser("status", help="Check Ollama status")
@@ -103,17 +123,15 @@ def build_parser() -> argparse.ArgumentParser:
     engine_pull.add_argument("model_name")
     engine_pull.set_defaults(func=cmd_engine_pull)
 
-    completion = sub.add_parser("completion", help="Generate shell completion")
-    completion.add_argument("shell", choices=["bash", "zsh"])
-    completion.set_defaults(func=cmd_completion)
 
+def _register_task_commands(sub: argparse._SubParsersAction) -> None:
     task = sub.add_parser("task", help="Manage periodic tasks")
     task_sub = task.add_subparsers(dest="task_command", required=True)
     task_list = task_sub.add_parser("list", help="List scheduled tasks")
     task_list.add_argument("agent")
     task_list.set_defaults(func=cmd_task_list)
 
-    return parser
+
 
 
 

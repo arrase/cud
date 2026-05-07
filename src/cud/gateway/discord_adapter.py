@@ -31,6 +31,12 @@ class DiscordGateway:
         self.bot: commands.Bot | None = None
         self.scheduler = TaskScheduler(self)
 
+    async def aclose_sessions(self) -> None:
+        """Close all active runtime sessions."""
+        for runtime in self.sessions.values():
+            await runtime.aclose()
+        self.sessions.clear()
+
     # -- Session management --------------------------------------------------
 
     def _get_thread_id(self, message_or_channel: discord.abc.Messageable | discord.Message) -> str:
@@ -139,7 +145,8 @@ class DiscordGateway:
         @bot.event
         async def on_ready() -> None:
             await bot.tree.sync()
-            bot.loop.create_task(gw.scheduler.run())
+            scheduler_task = bot.loop.create_task(gw.scheduler.run(), name="cud-scheduler")
+            scheduler_task.add_done_callback(_log_task_error)
             if gw.verbose:
                 log.info("Discord gateway ready as %s", bot.user)
 
@@ -188,3 +195,11 @@ class DiscordGateway:
         async with bot:
             await bot.start(token)
 
+
+def _log_task_error(task: asyncio.Task[None]) -> None:
+    """Log unhandled exceptions from background asyncio tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.exception("Background task '%s' failed", task.get_name(), exc_info=exc)

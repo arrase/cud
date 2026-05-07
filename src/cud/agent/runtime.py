@@ -21,6 +21,8 @@ from cud.agent.subagents import build_subagents
 from cud.config.settings import Settings, load_settings
 from cud.tools.mcp import load_mcp_tools_managed
 
+_log = logging.getLogger(__name__)
+
 
 @dataclass(slots=True)
 class RuntimeResponse:
@@ -84,7 +86,7 @@ class AgentRuntime:
 
         mcp_tools, mcp_cleanup = await load_mcp_tools_managed(self.agent_dir)
         if mcp_cleanup:
-            self._exit_stack.callback(mcp_cleanup)
+            self._exit_stack.push_async_callback(mcp_cleanup)
 
         subagents = build_subagents(
             self.settings.subagents,
@@ -199,7 +201,7 @@ def _role(message: Any) -> str:
     return message.__class__.__name__.replace("Message", "").lower()
 
 
-_log = logging.getLogger(__name__)
+
 
 
 def _run_async_sync(coro: Any) -> Any:
