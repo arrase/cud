@@ -131,6 +131,41 @@ Native support for MCP allows you to connect your agents to external tool server
 cud mcp add researcher https://mcp-server.example.com/sse --name search
 ```
 
+### 🤖 Custom Subagents
+Define specialized subagents that your main agent can delegate tasks to. Each subagent has its own isolated context, skills, and MCP servers — keeping the orchestrator's context clean and focused.
+
+Configure them in `settings.yaml`:
+```yaml
+subagents:
+  - name: "research-agent"
+    description: "Delegate here for complex research or web searches."
+    system_prompt: "You are a research specialist. Search thoroughly and return concise summaries."
+    model: "gemma4:e4b"  # Optional, inherits from main agent
+    context_window: 65536  # Optional, inherits from main agent
+    skills_paths:
+      - "./workspace/skills/research"
+    mcp_servers:
+      - name: "brave-search"
+        command: "npx"
+        args: ["-y", "@modelcontextprotocol/server-brave-search"]
+        env:
+          BRAVE_API_KEY: "${BRAVE_API_KEY}"
+
+  - name: "database-agent"
+    description: "Delegate here when the user asks about customer or sales data."
+    system_prompt: "You are a database analyst. Query the database and summarize results."
+    skills_paths:
+      - "./workspace/skills/database"
+    mcp_servers:
+      - name: "sqlite-server"
+        command: "uvx"
+        args: ["mcp-server-sqlite", "--db-path", "./data/ventas.db"]
+```
+
+- **Context isolation**: Subagent tool calls don't bloat the main agent's context — only the final result is returned.
+- **Environment injection**: Use `${VAR_NAME}` in MCP `env` fields to inject secrets from the host environment.
+- **Graceful failures**: If a subagent's MCP server fails to load (e.g., missing env vars), it is skipped and the agent continues normally.
+
 ---
 
 ## 🏗️ Architecture

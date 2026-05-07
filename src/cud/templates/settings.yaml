@@ -10,3 +10,16 @@ gateway:
   provider: discord
   token: ""
   mode: bot
+# subagents:
+#   - name: "research-agent"
+#     description: "Delegate here for complex research or web searches."
+#     system_prompt: "You are a research specialist. Search thoroughly and return concise summaries."
+#     # model: "gemma4:e4b"  # Optional, inherits from main agent
+#     # skills_paths:
+#     #   - "./workspace/skills/research"
+#     # mcp_servers:
+#     #   - name: "brave-search"
+#     #     command: "npx"
+#     #     args: ["-y", "@modelcontextprotocol/server-brave-search"]
+#     #     env:
+#     #       BRAVE_API_KEY: "${BRAVE_API_KEY}"

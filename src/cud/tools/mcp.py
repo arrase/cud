@@ -91,3 +91,33 @@ def _log_cleanup_error(task: asyncio.Task[None]) -> None:
     if exc is not None:
         log.warning("MCP client cleanup failed: %s", exc)
 
+
+async def load_mcp_tools_for_servers(
+    servers: dict[str, dict[str, Any]],
+) -> tuple[list[Any], Callable[[], None] | None]:
+    """Load MCP tools from a raw server config dict.
+
+    Same contract as ``load_mcp_tools_managed`` but accepts a pre-built dict
+    instead of reading from the agent's ``mcp.json``.
+    """
+    if not servers:
+        return [], None
+
+    client = MultiServerMCPClient(servers)
+    tools = await client.get_tools()
+
+    async def _close() -> None:
+        if hasattr(client, "close"):
+            await client.close()
+
+    def cleanup() -> None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_close())
+        else:
+            task = asyncio.ensure_future(_close())
+            task.add_done_callback(_log_cleanup_error)
+
+    return tools, cleanup
+

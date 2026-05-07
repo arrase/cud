@@ -16,6 +16,7 @@ from deepagents.middleware.summarization import create_summarization_tool_middle
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite import SqliteSaver
 
+from cud.agent.subagents import build_subagents
 from cud.config.settings import Settings, load_settings
 from cud.tools.mcp import load_mcp_tools_managed
 
@@ -78,7 +79,14 @@ class AgentRuntime:
         if mcp_cleanup:
             self._exit_stack.callback(mcp_cleanup)
 
-        return create_deep_agent(
+        subagents = build_subagents(
+            self.settings.subagents,
+            model_settings=self.settings.model,
+            exit_stack=self._exit_stack,
+            run_async=_run_async_sync,
+        )
+
+        kwargs: dict[str, Any] = dict(
             model=model,
             tools=mcp_tools,
             system_prompt=self.prompt,
@@ -89,6 +97,10 @@ class AgentRuntime:
             middleware=[create_summarization_tool_middleware(model, backend)],
             name=f"cud-{self.agent_dir.name}",
         )
+        if subagents:
+            kwargs["subagents"] = subagents
+
+        return create_deep_agent(**kwargs)
 
     def _sqlite_checkpointer(self) -> Any:
         db_path = self.agent_dir / "history.db"
