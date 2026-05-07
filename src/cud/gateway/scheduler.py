@@ -36,28 +36,36 @@ class TaskScheduler:
         """Main loop — must be launched as an asyncio task."""
         tasks = self._load_tasks()
         while True:
-            task, delay = _next_scheduled(tasks)
-
-            if task is None:
-                # No tasks: sleep indefinitely until reload.
-                await self._reload_event.wait()
-                self._reload_event.clear()
-                tasks = self._load_tasks()
-                continue
-
-            # Sleep until the next task fires OR a reload arrives.
             try:
-                await asyncio.wait_for(self._reload_event.wait(), timeout=delay)
-                # Reload arrived before the task was due.
-                self._reload_event.clear()
-                tasks = self._load_tasks()
-                continue
-            except asyncio.TimeoutError:
-                # Timeout expired — time to execute.
-                pass
+                task, delay = _next_scheduled(tasks)
 
-            await self._execute(task)
-            tasks = self._load_tasks()
+                if task is None:
+                    # No tasks: sleep indefinitely until reload.
+                    await self._reload_event.wait()
+                    self._reload_event.clear()
+                    tasks = self._load_tasks()
+                    continue
+
+                # Sleep until the next task fires OR a reload arrives.
+                try:
+                    await asyncio.wait_for(self._reload_event.wait(), timeout=delay)
+                    # Reload arrived before the task was due.
+                    self._reload_event.clear()
+                    tasks = self._load_tasks()
+                    continue
+                except asyncio.TimeoutError:
+                    # Timeout expired — time to execute.
+                    pass
+
+                await self._execute(task)
+                tasks = self._load_tasks()
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("Scheduler loop error; retrying in 30s")
+                await asyncio.sleep(30)
+                tasks = self._load_tasks()
 
     # -- internals -----------------------------------------------------------
 
@@ -66,25 +74,23 @@ class TaskScheduler:
         return [t for t in discover_tasks(tasks_dir) if t.enabled]
 
     async def _execute(self, task: TaskCard) -> None:
-        from cud.gateway.discord_adapter import _split_message
+        from cud.gateway._discord_utils import split_message
 
         thread_id = f"task-{uuid4().hex}"
         runtime = self.gateway.session(thread_id)
         try:
-            response = await asyncio.to_thread(
-                runtime.invoke, task.prompt, thread_id=thread_id,
-            )
+            response = await runtime.invoke(task.prompt, thread_id=thread_id)
             target = await self._resolve_target(task)
             if target is None:
                 log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
                 return
-            for chunk in _split_message(response.content):
+            for chunk in split_message(response.content):
                 await target.send(chunk)
         except Exception:
             log.exception("Task '%s' failed", task.name)
         finally:
             self.gateway.sessions.pop(thread_id, None)
-            runtime.close()
+            await runtime.aclose()
 
     async def _resolve_target(self, task: TaskCard) -> object | None:
         """Resolve the Discord destination: channel or DM."""
@@ -119,7 +125,7 @@ def _next_scheduled(tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
                 best_delay = delay
                 best_task = task
         except (ValueError, KeyError):
-            # Invalid cron expression — skip.
+            log.debug("Task '%s': invalid cron expression '%s', skipping", task.name, task.schedule)
             continue
 
     if best_task is None:

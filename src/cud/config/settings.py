@@ -31,10 +31,30 @@ class GatewaySettings:
 
 
 @dataclass(slots=True)
+class SubAgentMCPServer:
+    name: str = ""
+    command: str = ""
+    args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class SubAgentSettings:
+    name: str = ""
+    description: str = ""
+    system_prompt: str = ""
+    model: str = ""
+    context_window: int = 0
+    skills_paths: list[str] = field(default_factory=list)
+    mcp_servers: list[SubAgentMCPServer] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Settings:
     model: ModelSettings = field(default_factory=ModelSettings)
     runtime: RuntimeSettings = field(default_factory=RuntimeSettings)
     gateway: GatewaySettings = field(default_factory=GatewaySettings)
+    subagents: list[SubAgentSettings] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any] | None) -> Self:
@@ -43,6 +63,7 @@ class Settings:
             model=_dataclass_from_dict(ModelSettings, raw.get("model")),
             runtime=_dataclass_from_dict(RuntimeSettings, raw.get("runtime")),
             gateway=_dataclass_from_dict(GatewaySettings, raw.get("gateway")),
+            subagents=_subagents_from_list(raw.get("subagents")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +75,18 @@ def _dataclass_from_dict(cls: type[Any], raw: dict[str, Any] | None) -> Any:
         return cls()
     valid = {f.name for f in fields(cls)}
     return cls(**{k: v for k, v in raw.items() if k in valid})
+
+
+def _subagents_from_list(raw: list[dict[str, Any]] | None) -> list[SubAgentSettings]:
+    if not raw:
+        return []
+    subagents = []
+    for item in raw:
+        mcp_servers = [_dataclass_from_dict(SubAgentMCPServer, m) for m in (item.get("mcp_servers") or [])]
+        sa = _dataclass_from_dict(SubAgentSettings, {k: v for k, v in item.items() if k != "mcp_servers"})
+        sa.mcp_servers = mcp_servers
+        subagents.append(sa)
+    return subagents
 
 
 def load_settings(agent_dir: Path) -> Settings:
@@ -68,7 +101,7 @@ def load_settings(agent_dir: Path) -> Settings:
 
 def save_settings(agent_dir: Path, settings: Settings) -> None:
     agent_dir.mkdir(parents=True, exist_ok=True)
-    text = yaml.safe_dump(settings.to_dict(), sort_keys=False, allow_unicode=False)
+    text = yaml.safe_dump(settings.to_dict(), sort_keys=False, allow_unicode=True)
     (agent_dir / "settings.yaml").write_text(text, encoding="utf-8")
 
 
@@ -81,3 +114,5 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("model.context_window must be positive")
     if settings.model.temperature < 0:
         raise ValueError("model.temperature must be non-negative")
+    if settings.gateway.token and settings.gateway.provider != "discord":
+        raise ValueError("v1 supports only the discord gateway provider")

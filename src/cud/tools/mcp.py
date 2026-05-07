@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -53,7 +52,7 @@ def _filter_tools(tools: list[Any], config: MCPConfig) -> list[Any]:
     return [tool for tool in tools if tool.name in enabled]
 
 
-async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[], None] | None]:
+async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[], Coroutine[Any, Any, None]] | None]:
     """Load MCP tools and return a cleanup callback for the client.
 
     Returns ``(tools, cleanup)`` where *cleanup* must be called to close the
@@ -66,28 +65,39 @@ async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[
 
     client = MultiServerMCPClient(config.servers)
     tools = _filter_tools(await client.get_tools(), config)
+    return tools, _make_cleanup(client)
 
-    async def _close() -> None:
-        if hasattr(client, "close"):
-            await client.close()
 
-    def cleanup() -> None:
+async def load_mcp_tools_for_servers(
+    servers: dict[str, dict[str, Any]],
+) -> tuple[list[Any], Callable[[], Coroutine[Any, Any, None]] | None]:
+    """Load MCP tools from a raw server config dict.
+
+    Same contract as ``load_mcp_tools_managed`` but accepts a pre-built dict
+    instead of reading from the agent's ``mcp.json``.
+    """
+    if not servers:
+        return [], None
+
+    client = MultiServerMCPClient(servers)
+    tools = await client.get_tools()
+    return tools, _make_cleanup(client)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, Any, None]]:
+    """Build an async cleanup callback for an MCP client."""
+
+    async def cleanup() -> None:
         try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(_close())
-        else:
-            task = asyncio.ensure_future(_close())
-            task.add_done_callback(_log_cleanup_error)
+            if hasattr(client, "close"):
+                await client.close()
+        except Exception:
+            log.warning("MCP client cleanup failed", exc_info=True)
 
-    return tools, cleanup
-
-
-def _log_cleanup_error(task: asyncio.Task[None]) -> None:
-    """Log exceptions from fire-and-forget MCP cleanup tasks."""
-    if task.cancelled():
-        return
-    exc = task.exception()
-    if exc is not None:
-        log.warning("MCP client cleanup failed: %s", exc)
+    return cleanup
 

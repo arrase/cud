@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import warnings
+from importlib.metadata import PackageNotFoundError, version
 
 # TODO: Remove this warning filter once the internal checkpointer serializers
 # (specifically JsonPlusSerializer) are updated to explicitly pass `allowed_objects`.
@@ -22,5 +23,8 @@ except ImportError:
 
 __all__ = ["__version__"]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("cud")
+except PackageNotFoundError:
+    __version__ = "dev"
 
