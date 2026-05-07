@@ -71,9 +71,7 @@ class TaskScheduler:
         thread_id = f"task-{uuid4().hex}"
         runtime = self.gateway.session(thread_id)
         try:
-            response = await asyncio.to_thread(
-                runtime.invoke, task.prompt, thread_id=thread_id,
-            )
+            response = await runtime.invoke(task.prompt, thread_id=thread_id)
             target = await self._resolve_target(task)
             if target is None:
                 log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
@@ -84,7 +82,7 @@ class TaskScheduler:
             log.exception("Task '%s' failed", task.name)
         finally:
             self.gateway.sessions.pop(thread_id, None)
-            runtime.close()
+            await runtime.aclose()
 
     async def _resolve_target(self, task: TaskCard) -> object | None:
         """Resolve the Discord destination: channel or DM."""

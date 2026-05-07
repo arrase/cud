@@ -50,10 +50,10 @@ class DiscordGateway:
             self.sessions[thread_id] = runtime
         return runtime
 
-    def _reload_sessions(self) -> None:
+    async def _reload_sessions(self) -> None:
         self.settings = load_settings(self.agent_dir)
         for runtime in self.sessions.values():
-            runtime.reload()
+            await runtime.reload()
 
     # -- Message handling ----------------------------------------------------
 
@@ -64,7 +64,7 @@ class DiscordGateway:
         try:
             runtime = self.session(thread_id)
             async with message.channel.typing():
-                response = await asyncio.to_thread(runtime.invoke, message.content, thread_id=thread_id)
+                response = await runtime.invoke(message.content, thread_id=thread_id)
 
             content = response.content
             if not content:
@@ -88,15 +88,15 @@ class DiscordGateway:
         thread_id = self._get_thread_id(interaction.channel)
         old = self.sessions.pop(thread_id, None)
         if old:
-            await asyncio.to_thread(old.clear_history)
-            old.close()
+            await old.clear_history()
+            await old.aclose()
         self.session(thread_id)
         await interaction.response.send_message("New Cud session started. History cleared.", ephemeral=True)
 
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
         self.settings.model.name = model_name
         save_settings(self.agent_dir, self.settings)
-        self._reload_sessions()
+        await self._reload_sessions()
         await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
 
     async def cmd_usage(self, interaction: discord.Interaction) -> None:
@@ -108,11 +108,11 @@ class DiscordGateway:
 
     async def cmd_undo(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        result = self.session(thread_id).undo_last_exchange(thread_id=thread_id)
+        result = await self.session(thread_id).undo_last_exchange(thread_id=thread_id)
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_reload(self, interaction: discord.Interaction) -> None:
-        self._reload_sessions()
+        await self._reload_sessions()
         self.scheduler.reload()
         await interaction.response.send_message("Agent and tasks reloaded.", ephemeral=True)
 
@@ -124,7 +124,7 @@ class DiscordGateway:
     async def cmd_memory_clear(self, interaction: discord.Interaction) -> None:
         path = self.agent_dir / "MEMORY.md"
         path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
-        self._reload_sessions()
+        await self._reload_sessions()
         await interaction.response.send_message("Memory cleared.", ephemeral=True)
 
     # -- Bot lifecycle -------------------------------------------------------
