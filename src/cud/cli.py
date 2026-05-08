@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import shutil
 import subprocess
@@ -23,6 +24,7 @@ from cud.gateway import systemd
 from cud.gateway.run import run_gateway
 from cud.tools.mcp import load_mcp_config, save_mcp_config
 from cud.tools.tasks import discover_tasks
+from cud.tui.app import run_tui
 
 
 console = Console()
@@ -37,11 +39,18 @@ def build_parser() -> argparse.ArgumentParser:
     _register_mcp_commands(sub)
     _register_engine_commands(sub)
     _register_task_commands(sub)
+    _register_tui_commands(sub)
     completion = sub.add_parser("completion", help="Generate shell completion")
     completion.add_argument("shell", choices=["bash", "zsh"])
     completion.set_defaults(func=cmd_completion)
     return parser
 
+
+def _register_tui_commands(sub: argparse._SubParsersAction) -> None:
+    tui = sub.add_parser("tui", help="Run agent in local TUI mode")
+    tui.add_argument("agent")
+    tui.add_argument("--thread-id", default="local-tui", help="Thread ID for the conversation")
+    tui.set_defaults(func=cmd_tui)
 
 def _register_agent_commands(sub: argparse._SubParsersAction) -> None:
     agent = sub.add_parser("agent", help="Manage agents")
@@ -133,6 +142,10 @@ def _register_task_commands(sub: argparse._SubParsersAction) -> None:
 
 
 
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    return asyncio.run(run_tui(args.agent, thread_id=args.thread_id))
 
 
 def cmd_agent_create(args: argparse.Namespace) -> int:
@@ -323,9 +336,9 @@ def cmd_engine_pull(args: argparse.Namespace) -> int:
 
 def cmd_completion(args: argparse.Namespace) -> int:
     if args.shell == "bash":
-        console.print("complete -W 'agent gateway tools mcp engine task completion' cud")
+        console.print("complete -W 'agent gateway tools mcp engine task tui completion' cud")
     else:
-        console.print("#compdef cud\n_arguments '1:command:(agent gateway tools mcp engine task completion)'")
+        console.print("#compdef cud\n_arguments '1:command:(agent gateway tools mcp engine task tui completion)'")
     return 0
 
 

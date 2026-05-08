@@ -65,6 +65,17 @@ cud gateway setup researcher discord --token YOUR_BOT_TOKEN
 cud gateway start researcher
 ```
 
+### 5. Local Terminal Interface (TUI)
+
+You can also interact with your agent locally through a rich terminal interface.
+
+```bash
+# Start the local chat REPL
+cud tui researcher
+```
+
+Inside the TUI, type `/help` to see available commands, or `/quit` to exit.
+
 ---
 
 ## 💬 Discord Commands
