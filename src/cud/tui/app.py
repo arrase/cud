@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import HTML
 from rich import box
 from rich.console import Console, Group
@@ -130,6 +131,26 @@ def _build_prompt_message() -> HTML:
     return HTML('<style fg="#6e6e6e">❯</style> ')
 
 
+_COMMANDS_META = {
+    "/new": "Start a new session",
+    "/model ": "Switch model",
+    "/undo": "Remove last exchange",
+    "/reload": "Reload tools & prompt",
+    "/memory view": "View agent memory",
+    "/memory clear": "Clear agent memory",
+    "/help": "Show commands",
+    "/quit": "Exit",
+    "/exit": "Exit",
+}
+
+_completer = WordCompleter(
+    list(_COMMANDS_META.keys()),
+    meta_dict=_COMMANDS_META,
+    ignore_case=True,
+    sentence=True,
+)
+
+
 # ---------------------------------------------------------------------------
 # Command handler
 # ---------------------------------------------------------------------------
@@ -200,7 +221,7 @@ async def run_tui(agent_name: str, thread_id: str = "local-tui") -> int:
 
     settings = load_settings(agent_dir)
     prompt_message = _build_prompt_message()
-    session: PromptSession[str] = PromptSession()
+    session: PromptSession[str] = PromptSession(completer=_completer)
 
     _welcome_banner(agent_name, settings.model.name, thread_id, console)
 
