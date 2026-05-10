@@ -16,7 +16,7 @@ from rich.theme import Theme
 
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
-from cud.config.settings import load_settings, save_settings
+from cud.config.settings import load_settings
 
 # ---------------------------------------------------------------------------
 # Theme & constants
@@ -155,8 +155,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
         _system_message("Agent tools and prompt reloaded.", "cud.success", console)
     elif command == "/memory":
         if args == "view":
-            path = runtime.agent_dir / "MEMORY.md"
-            content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+            content = await runtime.view_memory()
             panel = Panel(
                 Markdown(content),
                 title="[bold white]memory[/bold white]",
@@ -168,20 +167,16 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
             console.print(panel)
             console.print()
         elif args == "clear":
-            path = runtime.agent_dir / "MEMORY.md"
-            path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
-            await runtime.reload()
-            _system_message("Memory cleared.", "cud.success", console)
+            result = await runtime.clear_memory()
+            _system_message(result, "cud.success", console)
         else:
             _system_message("Usage: /memory view | /memory clear", "cud.warning", console)
     elif command == "/model":
         if not args:
             _system_message("Usage: /model <model_name>", "cud.warning", console)
             return False
-        runtime.settings.model.name = args
-        save_settings(runtime.agent_dir, runtime.settings)
-        await runtime.reload()
-        _system_message(f"Model set to {args}.", "cud.success", console)
+        result = await runtime.set_model(args)
+        _system_message(result, "cud.success", console)
     elif command == "/help":
         _help_panel(console)
     else:
