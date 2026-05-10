@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from croniter import croniter
+from rich.console import Console
+from rich.table import Table
+
+from cud.config.paths import agent_home
 from cud.tools._frontmatter import parse_frontmatter
+
+console = Console()
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,4 +74,45 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# CLI Commands
+# ---------------------------------------------------------------------------
+
+def register_task_commands(sub: argparse._SubParsersAction) -> None:
+    task = sub.add_parser("task", help="Manage periodic tasks")
+    task_sub = task.add_subparsers(dest="task_command", required=True)
+    task_list = task_sub.add_parser("list", help="List scheduled tasks")
+    task_list.add_argument("agent")
+    task_list.set_defaults(func=cmd_task_list)
+
+
+def cmd_task_list(args: argparse.Namespace) -> int:
+    directory = agent_home(args.agent)
+    tasks_dir = directory / "workspace" / "tasks"
+    tasks = discover_tasks(tasks_dir)
+    if not tasks:
+        console.print(f"No tasks found in {tasks_dir}")
+        return 0
+    table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
+    now = datetime.now(timezone.utc)
+    for task in tasks:
+        if task.channel_id:
+            dest = f"channel:{task.channel_id}"
+        elif task.user_id:
+            dest = f"DM:{task.user_id}"
+        else:
+            dest = "none"
+        next_run = "—"
+        if task.enabled:
+            try:
+                cron = croniter(task.schedule, now)
+                next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
+            except Exception:
+                next_run = "invalid cron"
+        enabled = "✓" if task.enabled else "✗"
+        table.add_row(task.name, task.schedule, dest, enabled, next_run)
+    console.print(table)
+    return 0
 

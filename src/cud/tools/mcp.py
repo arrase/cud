@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
+import shlex
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from rich.console import Console
+
+from cud.config.paths import agent_home
 
 log = logging.getLogger(__name__)
+console = Console()
 
 
 @dataclass(slots=True)
@@ -100,4 +106,67 @@ def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, A
             log.warning("MCP client cleanup failed", exc_info=True)
 
     return cleanup
+
+
+# ---------------------------------------------------------------------------
+# CLI Commands
+# ---------------------------------------------------------------------------
+
+def register_mcp_commands(sub: argparse._SubParsersAction) -> None:
+    mcp = sub.add_parser("mcp", help="Manage MCP servers")
+    mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
+    mcp_add = mcp_sub.add_parser("add", help="Add an MCP server")
+    mcp_add.add_argument("agent")
+    mcp_add.add_argument("server_url_or_cmd")
+    mcp_add.add_argument("--name")
+    mcp_add.add_argument("--allowed-tool", action="append", default=[])
+    mcp_add.add_argument("--transport", choices=["stdio", "sse", "streamable_http"], help="Override transport type")
+    mcp_add.add_argument("--env", action="append", default=[], help="Environment variables for stdio (e.g. KEY=VALUE)")
+    mcp_add.set_defaults(func=cmd_mcp_add)
+    mcp_list = mcp_sub.add_parser("list", help="List MCP servers")
+    mcp_list.add_argument("agent")
+    mcp_list.set_defaults(func=cmd_mcp_list)
+
+
+def cmd_mcp_add(args: argparse.Namespace) -> int:
+    directory = agent_home(args.agent)
+    config = load_mcp_config(directory)
+    name = args.name or f"server{len(config.servers) + 1}"
+    value = args.server_url_or_cmd
+
+    is_url = value.startswith("http://") or value.startswith("https://")
+    transport = args.transport
+    if not transport:
+        transport = "sse" if is_url else "stdio"
+
+    if transport in ("sse", "streamable_http"):
+        config.servers[name] = {"url": value, "transport": transport}
+    else:
+        parts = shlex.split(value)
+        command = parts[0] if parts else value
+        cmd_args = parts[1:]
+        env_dict = {}
+        for env_var in args.env:
+            if "=" in env_var:
+                k, v = env_var.split("=", 1)
+                env_dict[k] = v
+            else:
+                env_dict[env_var] = ""
+        server_config: dict[str, Any] = {"command": command, "args": cmd_args, "transport": transport}
+        if env_dict:
+            server_config["env"] = env_dict
+        config.servers[name] = server_config
+
+    if args.allowed_tool:
+        config.allowed_tools = sorted(set(config.allowed_tools + args.allowed_tool))
+    save_mcp_config(directory, config)
+    console.print(f"Added MCP server {name}")
+    return 0
+
+
+def cmd_mcp_list(args: argparse.Namespace) -> int:
+    config = load_mcp_config(agent_home(args.agent))
+    data = {"servers": config.servers, "allowedTools": config.allowed_tools, "disabledTools": config.disabled_tools}
+    console.print(json.dumps(data, indent=2))
+    return 0
 
