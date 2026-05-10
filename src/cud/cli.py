@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from croniter import croniter
 from rich.console import Console
@@ -116,6 +118,8 @@ def _register_mcp_commands(sub: argparse._SubParsersAction) -> None:
     mcp_add.add_argument("server_url_or_cmd")
     mcp_add.add_argument("--name")
     mcp_add.add_argument("--allowed-tool", action="append", default=[])
+    mcp_add.add_argument("--transport", choices=["stdio", "sse", "streamable_http"], help="Override transport type")
+    mcp_add.add_argument("--env", action="append", default=[], help="Environment variables for stdio (e.g. KEY=VALUE)")
     mcp_add.set_defaults(func=cmd_mcp_add)
     mcp_list = mcp_sub.add_parser("list", help="List MCP servers")
     mcp_list.add_argument("agent")
@@ -299,10 +303,30 @@ def cmd_mcp_add(args: argparse.Namespace) -> int:
     config = load_mcp_config(directory)
     name = args.name or f"server{len(config.servers) + 1}"
     value = args.server_url_or_cmd
-    if value.startswith("http://") or value.startswith("https://"):
-        config.servers[name] = {"url": value, "transport": "streamable_http"}
+
+    is_url = value.startswith("http://") or value.startswith("https://")
+    transport = args.transport
+    if not transport:
+        transport = "sse" if is_url else "stdio"
+
+    if transport in ("sse", "streamable_http"):
+        config.servers[name] = {"url": value, "transport": transport}
     else:
-        config.servers[name] = {"command": value, "transport": "stdio"}
+        parts = shlex.split(value)
+        command = parts[0] if parts else value
+        cmd_args = parts[1:]
+        env_dict = {}
+        for env_var in args.env:
+            if "=" in env_var:
+                k, v = env_var.split("=", 1)
+                env_dict[k] = v
+            else:
+                env_dict[env_var] = ""
+        server_config: dict[str, Any] = {"command": command, "args": cmd_args, "transport": transport}
+        if env_dict:
+            server_config["env"] = env_dict
+        config.servers[name] = server_config
+
     if args.allowed_tool:
         config.allowed_tools = sorted(set(config.allowed_tools + args.allowed_tool))
     save_mcp_config(directory, config)

@@ -137,9 +137,18 @@ Make it sound enthusiastic!
 ```
 
 ### 🌐 Model Context Protocol (MCP)
-Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command:
+Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command.
+
+For HTTP/SSE servers:
 ```bash
 cud mcp add researcher https://mcp-server.example.com/sse --name search
+```
+
+For stdio servers (with arguments and environment variables):
+```bash
+cud mcp add researcher "npx -y @modelcontextprotocol/server-postgres postgresql://localhost/mydb" \
+    --name db-search \
+    --env POSTGRES_PASSWORD=secret
 ```
 
 ### 🤖 Custom Subagents
