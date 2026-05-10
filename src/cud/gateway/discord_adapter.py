@@ -100,10 +100,11 @@ class DiscordGateway:
         await interaction.response.send_message("New Cud session started. History cleared.", ephemeral=True)
 
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
-        self.settings.model.name = model_name
-        save_settings(self.agent_dir, self.settings)
+        thread_id = self._get_thread_id(interaction.channel)
+        runtime = self.session(thread_id)
+        result = await runtime.set_model(model_name)
         await self._reload_sessions()
-        await interaction.response.send_message(f"Model set to `{model_name}`.", ephemeral=True)
+        await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_usage(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
@@ -123,15 +124,15 @@ class DiscordGateway:
         await interaction.response.send_message("Agent and tasks reloaded.", ephemeral=True)
 
     async def cmd_memory_view(self, interaction: discord.Interaction) -> None:
-        path = self.agent_dir / "MEMORY.md"
-        content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+        thread_id = self._get_thread_id(interaction.channel)
+        content = await self.session(thread_id).view_memory()
         await interaction.response.send_message(content[:DISCORD_MAX_LENGTH], ephemeral=True)
 
     async def cmd_memory_clear(self, interaction: discord.Interaction) -> None:
-        path = self.agent_dir / "MEMORY.md"
-        path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
+        thread_id = self._get_thread_id(interaction.channel)
+        result = await self.session(thread_id).clear_memory()
         await self._reload_sessions()
-        await interaction.response.send_message("Memory cleared.", ephemeral=True)
+        await interaction.response.send_message(result, ephemeral=True)
 
     # -- Bot lifecycle -------------------------------------------------------
 

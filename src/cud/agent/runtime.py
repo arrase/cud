@@ -153,6 +153,23 @@ class AgentRuntime:
         await self.reload()
         return "History cleared."
 
+    async def view_memory(self) -> str:
+        path = self.agent_dir / "MEMORY.md"
+        return path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+
+    async def clear_memory(self) -> str:
+        path = self.agent_dir / "MEMORY.md"
+        path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
+        await self.reload()
+        return "Memory cleared."
+
+    async def set_model(self, model_name: str) -> str:
+        from cud.config.settings import save_settings
+        self.settings.model.name = model_name
+        save_settings(self.agent_dir, self.settings)
+        await self.reload()
+        return f"Model set to {model_name}."
+
     async def aclose(self) -> None:
         await self._exit_stack.aclose()
 
