@@ -7,14 +7,19 @@ import logging
 
 from .discord_adapter import DiscordGateway
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 def run_gateway(agent: str, verbose: bool = False) -> None:
     gateway = DiscordGateway(agent, verbose=verbose)
     try:
-        asyncio.run(gateway.run())
+        asyncio.run(_run_and_cleanup(gateway))
     except KeyboardInterrupt:
-        log.info("Shutting down gateway for '%s'", agent)
+        _log.info("Shutting down gateway for '%s'", agent)
+
+
+async def _run_and_cleanup(gateway: DiscordGateway) -> None:
+    try:
+        await gateway.run()
     finally:
-        asyncio.run(gateway.aclose_sessions())
+        await gateway.aclose_sessions()

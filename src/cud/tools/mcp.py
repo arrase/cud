@@ -16,8 +16,9 @@ from rich.console import Console
 
 from cud.config.paths import agent_home
 
-log = logging.getLogger(__name__)
 console = Console()
+
+_log = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -103,7 +104,7 @@ def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, A
             if hasattr(client, "close"):
                 await client.close()
         except Exception:
-            log.warning("MCP client cleanup failed", exc_info=True)
+            _log.warning("MCP client cleanup failed", exc_info=True)
 
     return cleanup
 

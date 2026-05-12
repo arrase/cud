@@ -9,9 +9,10 @@ from uuid import uuid4
 
 from croniter import croniter
 
+from cud.gateway._discord_utils import split_message
 from cud.tools.tasks import TaskCard, discover_tasks
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 
 class TaskScheduler:
@@ -63,7 +64,7 @@ class TaskScheduler:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                log.exception("Scheduler loop error; retrying in 30s")
+                _log.exception("Scheduler loop error; retrying in 30s")
                 await asyncio.sleep(30)
                 tasks = self._load_tasks()
 
@@ -74,20 +75,18 @@ class TaskScheduler:
         return [t for t in discover_tasks(tasks_dir) if t.enabled]
 
     async def _execute(self, task: TaskCard) -> None:
-        from cud.gateway._discord_utils import split_message
-
         thread_id = f"task-{uuid4().hex}"
         runtime = self.gateway.session(thread_id)
         try:
             response = await runtime.invoke(task.prompt, thread_id=thread_id)
             target = await self._resolve_target(task)
             if target is None:
-                log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
+                _log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
                 return
             for chunk in split_message(response.content):
                 await target.send(chunk)
         except Exception:
-            log.exception("Task '%s' failed", task.name)
+            _log.exception("Task '%s' failed", task.name)
         finally:
             self.gateway.sessions.pop(thread_id, None)
             await runtime.aclose()
@@ -125,7 +124,7 @@ def _next_scheduled(tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
                 best_delay = delay
                 best_task = task
         except (ValueError, KeyError):
-            log.debug("Task '%s': invalid cron expression '%s', skipping", task.name, task.schedule)
+            _log.debug("Task '%s': invalid cron expression '%s', skipping", task.name, task.schedule)
             continue
 
     if best_task is None:

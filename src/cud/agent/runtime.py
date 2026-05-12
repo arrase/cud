@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
-import logging
 import contextlib
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
@@ -18,7 +18,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 
 from cud.agent.subagents import build_subagents
-from cud.config.settings import Settings, load_settings
+from cud.config.settings import Settings, load_settings, save_settings
 from cud.tools.mcp import load_mcp_tools_managed
 
 _log = logging.getLogger(__name__)
@@ -164,7 +164,6 @@ class AgentRuntime:
         return "Memory cleared."
 
     async def set_model(self, model_name: str) -> str:
-        from cud.config.settings import save_settings
         self.settings.model.name = model_name
         save_settings(self.agent_dir, self.settings)
         await self.reload()
@@ -216,9 +215,6 @@ def _role(message: Any) -> str:
     if isinstance(message, dict):
         return str(message.get("role") or message.get("type") or "").lower()
     return message.__class__.__name__.replace("Message", "").lower()
-
-
-
 
 
 def _run_async_sync(coro: Any) -> Any:

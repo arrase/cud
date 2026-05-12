@@ -16,7 +16,7 @@ from cud.config.settings import load_settings, save_settings
 from cud.gateway._discord_utils import DISCORD_MAX_LENGTH, send_response, split_message
 from cud.gateway.scheduler import TaskScheduler
 
-log = logging.getLogger(__name__)
+_log = logging.getLogger(__name__)
 
 _SAFE = re.compile(r"[^A-Za-z0-9_.:-]+")
 
@@ -84,7 +84,7 @@ class DiscordGateway:
                 await message.channel.send(chunk)
 
         except Exception as exc:
-            log.exception("Error handling message in thread %s", thread_id)
+            _log.exception("Error handling message in thread %s", thread_id)
             error_msg = f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`"
             await send_response(message, error_msg)
 
@@ -149,7 +149,7 @@ class DiscordGateway:
             scheduler_task = bot.loop.create_task(gw.scheduler.run(), name="cud-scheduler")
             scheduler_task.add_done_callback(_log_task_error)
             if gw.verbose:
-                log.info("Discord gateway ready as %s", bot.user)
+                _log.info("Discord gateway ready as %s", bot.user)
 
         @bot.event
         async def on_message(message: discord.Message) -> None:
@@ -203,4 +203,4 @@ def _log_task_error(task: asyncio.Task[None]) -> None:
         return
     exc = task.exception()
     if exc is not None:
-        log.exception("Background task '%s' failed", task.get_name(), exc_info=exc)
+        _log.exception("Background task '%s' failed", task.get_name(), exc_info=exc)
