@@ -14,8 +14,8 @@ class MemoryTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         # Monospace Text Editor
         self.editor = QPlainTextEdit()
@@ -30,7 +30,7 @@ class MemoryTab(QWidget):
         mono_font.setPointSize(11)
         self.editor.setFont(mono_font)
 
-        self.layout.addWidget(self.editor)
+        self.main_layout.addWidget(self.editor)
 
     def load_file(self, file_path: Path) -> None:
         """Read and load memory file content to the monospace text edit."""

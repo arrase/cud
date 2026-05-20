@@ -7,7 +7,7 @@ from pathlib import Path
 
 from croniter import croniter
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
@@ -27,14 +27,14 @@ class TasksTab(QWidget):
         super().__init__(parent)
         self.agent_dir: Path | None = None
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout.setSpacing(12)
 
         # Title / Description
         self.title_label = QLabel("Scheduled Tasks (Cron)")
         self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.layout.addWidget(self.title_label)
+        self.main_layout.addWidget(self.title_label)
 
         self.desc_label = QLabel(
             "Scheduled tasks allow the agent to execute periodic workflows automatically. "
@@ -42,7 +42,7 @@ class TasksTab(QWidget):
         )
         self.desc_label.setWordWrap(True)
         self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA; line-height: 1.4;")
-        self.layout.addWidget(self.desc_label)
+        self.main_layout.addWidget(self.desc_label)
 
         # Table Widget
         self.table = QTableWidget()
@@ -84,7 +84,7 @@ class TasksTab(QWidget):
                 color: #FFFFFF;
             }
         """)
-        self.layout.addWidget(self.table)
+        self.main_layout.addWidget(self.table)
 
     def load_data(self, agent_dir: Path) -> None:
         """Scan tasks directory, compute cron intervals and render to table."""

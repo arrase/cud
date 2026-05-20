@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -25,9 +26,9 @@ class SettingsTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(16)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(16)
 
         # Cache settings object
         self.current_settings = Settings()
@@ -62,7 +63,7 @@ class SettingsTab(QWidget):
         self.model_layout.addRow("Temperature:", self.input_temp)
         self.model_layout.addRow("Context Window:", self.input_ctx)
 
-        self.layout.addWidget(self.group_model)
+        self.main_layout.addWidget(self.group_model)
 
         # 2. Runtime
         self.group_runtime = QGroupBox("Runtime Options")
@@ -72,7 +73,7 @@ class SettingsTab(QWidget):
         self.chk_traversal.setChecked(True)
 
         self.runtime_layout.addRow("", self.chk_traversal)
-        self.layout.addWidget(self.group_runtime)
+        self.main_layout.addWidget(self.group_runtime)
 
         # 3. Discord Gateway
         self.group_gateway = QGroupBox("Discord Gateway Bot Config")
@@ -106,8 +107,8 @@ class SettingsTab(QWidget):
         self.gateway_layout.addRow("Mode:", self.input_gw_mode)
         self.gateway_layout.addRow("Discord Token:", token_container)
 
-        self.layout.addWidget(self.group_gateway)
-        self.layout.addStretch(1)
+        self.main_layout.addWidget(self.group_gateway)
+        self.main_layout.addStretch(1)
 
     def on_show_token_toggled(self, state: int) -> None:
         """Toggle QLineEdit password character visibility mask.
@@ -115,7 +116,7 @@ class SettingsTab(QWidget):
         Args:
             state: Toggled integer checkbox state.
         """
-        if state == Qt.CheckState.Checked.value:
+        if self.chk_show_token.isChecked():
             self.input_token.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
             self.input_token.setEchoMode(QLineEdit.EchoMode.Password)

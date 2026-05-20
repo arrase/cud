@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication
 
 # Elegant premium dark mode stylesheet
 DARK_STYLESHEET = """
@@ -61,33 +60,7 @@ QScrollBar::handle:vertical:hover {
 }
 """
 
-try:
-    from cud.gui.dashboard import MainWindow
-except (ImportError, ModuleNotFoundError):
-    class MainWindow(QMainWindow):  # type: ignore
-        """Mock placeholder MainWindow used when cud.gui.dashboard is not yet implemented."""
-
-        def __init__(self) -> None:
-            super().__init__()
-            self.setWindowTitle("Cud Agent Controller")
-            self.resize(1000, 700)
-
-            central = QWidget()
-            self.setCentralWidget(central)
-            layout = QVBoxLayout(central)
-            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            title = QLabel("Cud GUI Core Integration")
-            title.setStyleSheet("font-size: 24px; font-weight: bold; color: #FFFFFF; margin-bottom: 8px;")
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            subtitle = QLabel("The core integration layer (workers, database, entry point) is active.\n"
-                              "Waiting for cud.gui.dashboard implementation.")
-            subtitle.setStyleSheet("font-size: 14px; color: #888888; line-height: 1.4;")
-            subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            layout.addWidget(title)
-            layout.addWidget(subtitle)
+from cud.gui.dashboard import MainWindow
 
 
 def main() -> None:

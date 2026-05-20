@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import shlex
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -37,21 +36,21 @@ class MCPTab(QWidget):
         self.agent_dir: Path | None = None
         self.current_config = MCPConfig()
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout.setSpacing(12)
 
         # Title
         self.title_label = QLabel("Model Context Protocol (MCP)")
         self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.layout.addWidget(self.title_label)
+        self.main_layout.addWidget(self.title_label)
 
         self.desc_label = QLabel(
             "Connect your agent with external tools and data sources via MCP servers "
             "(Stdio or HTTP SSE)."
         )
         self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
-        self.layout.addWidget(self.desc_label)
+        self.main_layout.addWidget(self.desc_label)
 
         # Main horizontal split
         self.split_layout = QHBoxLayout()
@@ -177,7 +176,7 @@ class MCPTab(QWidget):
         self.right_col.addWidget(self.group_editor)
         self.split_layout.addLayout(self.right_col, 2)
 
-        self.layout.addLayout(self.split_layout, 1)
+        self.main_layout.addLayout(self.split_layout, 1)
 
         # Bottom section: Global allowed/disabled tools lists
         self.group_global = QGroupBox("Global Tool Control (Optional)")
@@ -192,7 +191,7 @@ class MCPTab(QWidget):
         self.global_layout.addRow("Allowed Tools (Commas):", self.input_allowed)
         self.global_layout.addRow("Disabled Tools (Commas):", self.input_disabled)
 
-        self.layout.addWidget(self.group_global)
+        self.main_layout.addWidget(self.group_global)
 
         # Keep track of the current selected row index
         self.selected_server_name = ""

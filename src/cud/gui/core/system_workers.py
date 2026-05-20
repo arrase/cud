@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Final
 
 from PySide6.QtCore import QObject, QRunnable, Signal

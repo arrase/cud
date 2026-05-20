@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -43,9 +42,9 @@ class AgentDetailView(QWidget):
         self.agent_name = ""
 
         # Layout
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout.setSpacing(12)
 
         # 1. Header Toolbar
         self.header = QHBoxLayout()
@@ -85,13 +84,13 @@ class AgentDetailView(QWidget):
         self.header.addWidget(self.btn_tui)
         self.header.addWidget(self.btn_save)
 
-        self.layout.addLayout(self.header)
+        self.main_layout.addLayout(self.header)
 
         # Separator line
         line = QWidget()
         line.setFixedHeight(1)
         line.setStyleSheet("background-color: #2B2B2B;")
-        self.layout.addWidget(line)
+        self.main_layout.addWidget(line)
 
         # 2. Body Splitter (Left navigation, Right content area)
         self.body_layout = QHBoxLayout()
@@ -168,7 +167,7 @@ class AgentDetailView(QWidget):
         self.body_layout.addWidget(self.nav_list)
         self.body_layout.addWidget(self.content_stack, 1)
 
-        self.layout.addLayout(self.body_layout, 1)
+        self.main_layout.addLayout(self.body_layout, 1)
 
         # Selection state
         self.nav_list.setCurrentRow(0)
@@ -176,14 +175,7 @@ class AgentDetailView(QWidget):
         # Transaction Loading dialogue
         self.loading_dialog = None
 
-    def _create_placeholder(self, text: str) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        lbl = QLabel(text)
-        lbl.setStyleSheet("font-size: 14px; color: #888888;")
-        layout.addWidget(lbl)
-        return widget
+
 
     def set_agent(self, agent_name: str) -> None:
         """Contextualize work view and load agent configs to their respective tabs.

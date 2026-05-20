@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from pathlib import Path
 from typing import Any, Final
 
 from PySide6.QtCore import QObject, QRunnable, Signal

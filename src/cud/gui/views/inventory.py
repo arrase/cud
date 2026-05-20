@@ -67,7 +67,7 @@ class AgentItemDelegate(QStyledItemDelegate):
         led_color = QColor("#7F8C8D")  # Gray for inactive / unknown
         if status == "active":
             led_color = QColor("#2ECC71")  # Active Green
-        elif status == "failed" or status == "error":
+        elif status in ("failed", "error"):
             led_color = QColor("#E74C3C")  # Failed Red
         elif status == "checking":
             led_color = QColor("#F1C40F")  # Loading Yellow
@@ -113,9 +113,9 @@ class InventoryView(QWidget):
         super().__init__(parent)
 
         # Main Layout
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(20, 20, 20, 20)
-        self.layout.setSpacing(16)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setSpacing(16)
 
         # Top Toolbar layout
         self.toolbar = QHBoxLayout()
@@ -134,7 +134,7 @@ class InventoryView(QWidget):
         self.toolbar.addWidget(self.btn_create)
         self.toolbar.addWidget(self.btn_refresh)
 
-        self.layout.addLayout(self.toolbar)
+        self.main_layout.addLayout(self.toolbar)
 
         # ListView config
         self.list_view = QListView()
@@ -147,7 +147,7 @@ class InventoryView(QWidget):
         self.model = QStandardItemModel()
         self.list_view.setModel(self.model)
 
-        self.layout.addWidget(self.list_view, 1)
+        self.main_layout.addWidget(self.list_view, 1)
 
         # Load list
         self.reload_agents()
@@ -192,7 +192,8 @@ class InventoryView(QWidget):
                 if "failed" in status_text or "error" in status_text:
                     status = "failed"
                 item.setData(status, Qt.ItemDataRole.UserRole + 2)
-                self.model.layoutChanged.emit()
+                idx = self.model.index(row, 0)
+                self.model.dataChanged.emit(idx, idx)
                 break
 
     def on_create_agent_clicked(self) -> None:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
-from PySide6.QtCore import Qt, QThreadPool
+from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -28,9 +29,9 @@ class MessageBubble(QWidget):
     def __init__(self, role: str, content: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(12, 10, 12, 10)
-        self.layout.setSpacing(6)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(12, 10, 12, 10)
+        self.main_layout.setSpacing(6)
 
         # 1. Bubble Frame/Container
         self.bubble_frame = QWidget()
@@ -108,14 +109,14 @@ class MessageBubble(QWidget):
         # 5. Dynamic alignments and theme setups
         self.setup_aesthetics(role)
 
-        self.layout.addWidget(self.bubble_frame)
+        self.main_layout.addWidget(self.bubble_frame)
 
     def setup_aesthetics(self, role: str) -> None:
         """Apply beautiful specific styles and align to standard messaging standards."""
         role = role.lower()
         if role == "user":
             # Right-aligned blue bubble
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+            self.main_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
             self.bubble_frame.setFixedWidth(500)
             self.bubble_frame.setStyleSheet("""
                 background-color: #3F51B5;
@@ -128,7 +129,7 @@ class MessageBubble(QWidget):
 
         elif role == "assistant":
             # Left-aligned dark bubble with purple/blue highlights
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.main_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.bubble_frame.setFixedWidth(550)
             self.bubble_frame.setStyleSheet("""
                 background-color: #222222;
@@ -140,20 +141,19 @@ class MessageBubble(QWidget):
 
         elif role == "system":
             # Center-aligned italicized light indicator
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.main_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.bubble_frame.setStyleSheet("background: transparent;")
             self.role_label.hide()
             self.content_label.setStyleSheet("""
                 color: #888888;
                 font-style: italic;
                 font-size: 11px;
-                alignment: center;
             """)
             self.content_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         elif role == "tool":
             # Left-aligned compact amber bubble
-            self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.main_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.bubble_frame.setFixedWidth(550)
             self.bubble_frame.setStyleSheet("""
                 background-color: #2D281E;
@@ -184,14 +184,14 @@ class HistoryTab(QWidget):
         self.agent_dir: Path | None = None
         self.selected_thread_id = ""
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout.setSpacing(12)
 
         # Title
         self.title_label = QLabel("Chat History")
         self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.layout.addWidget(self.title_label)
+        self.main_layout.addWidget(self.title_label)
 
         # Splitter Layout: Threads List vs Message Box
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -270,7 +270,7 @@ class HistoryTab(QWidget):
         # Set sizes proportion: 1 (Sidebar) : 3 (Chat view)
         self.splitter.setSizes([200, 600])
 
-        self.layout.addWidget(self.splitter)
+        self.main_layout.addWidget(self.splitter)
 
         # Setup friendly blank states
         self.clear_bubbles_layout()
@@ -373,9 +373,9 @@ class HistoryTab(QWidget):
             self.bubbles_layout.addWidget(bubble)
 
         # Force scroll area to bottom after UI repaints
-        self.scroll_area.verticalScrollBar().setValue(
+        QTimer.singleShot(0, lambda: self.scroll_area.verticalScrollBar().setValue(
             self.scroll_area.verticalScrollBar().maximum()
-        )
+        ))
 
     def on_db_error(self, err_message: str) -> None:
         """Handle SQLite worker errors gracefully."""

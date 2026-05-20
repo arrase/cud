@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QLabel,
     QTreeWidget,
@@ -24,21 +24,21 @@ class SubagentsTab(QWidget):
         super().__init__(parent)
         self.agent_dir: Path | None = None
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(16, 16, 16, 16)
+        self.main_layout.setSpacing(12)
 
         # Title
         self.title_label = QLabel("Subagents Topology")
         self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.layout.addWidget(self.title_label)
+        self.main_layout.addWidget(self.title_label)
 
         self.desc_label = QLabel(
             "Visualize the hierarchy of subagents and specialized assistants that this agent "
             "can delegate and orchestrate to solve complex tasks."
         )
         self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
-        self.layout.addWidget(self.desc_label)
+        self.main_layout.addWidget(self.desc_label)
 
         # Tree Widget
         self.tree = QTreeWidget()
@@ -70,7 +70,7 @@ class SubagentsTab(QWidget):
                 color: #FFFFFF;
             }
         """)
-        self.layout.addWidget(self.tree)
+        self.main_layout.addWidget(self.tree)
 
     def load_data(self, agent_dir: Path) -> None:
         """Parse settings.yaml to recover subagents configurations and build the QTreeWidget."""
