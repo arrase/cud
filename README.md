@@ -31,10 +31,20 @@ Cud relies on **Ollama** for local inference.
 
 ### 1. Installation
 
-*Requires Python 3.11+.*
+*Requires Python 3.11+ and a Linux distribution with systemd.*
+
+You can install Cud automatically using our install script (requires `pipx` or `uv`):
 
 ```bash
-pipx install git+https://github.com/arrase/cud.git
+curl -fsSL https://raw.githubusercontent.com/arrase/cud/main/install.sh | bash
+```
+
+**Manual Installation:**
+
+```bash
+pipx install --force git+https://github.com/arrase/cud.git
+# or
+uv tool install --force git+https://github.com/arrase/cud.git
 ```
 
 ### 2. Configure Ollama
