@@ -27,3 +27,15 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     except yaml.YAMLError:
         metadata = {}
     return metadata, text[match.end():]
+
+
+def render_frontmatter(metadata: dict[str, Any], body: str) -> str:
+    """Combine *metadata* and *body* into a YAML-frontmatter markdown string.
+
+    If *metadata* is empty the frontmatter block is omitted and only the body
+    is returned.
+    """
+    if not metadata:
+        return body
+    header = yaml.safe_dump(metadata, sort_keys=False, allow_unicode=True).rstrip("\n")
+    return f"---\n{header}\n---\n{body}"

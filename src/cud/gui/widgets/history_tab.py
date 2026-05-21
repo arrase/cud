@@ -8,7 +8,6 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
@@ -117,7 +116,7 @@ class MessageBubble(QWidget):
         if role == "user":
             # Right-aligned blue bubble
             self.main_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-            self.bubble_frame.setFixedWidth(500)
+            self.bubble_frame.setMaximumWidth(500)
             self.bubble_frame.setStyleSheet("""
                 background-color: #3F51B5;
                 border-radius: 12px;
@@ -130,7 +129,7 @@ class MessageBubble(QWidget):
         elif role == "assistant":
             # Left-aligned dark bubble with purple/blue highlights
             self.main_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.bubble_frame.setFixedWidth(550)
+            self.bubble_frame.setMaximumWidth(550)
             self.bubble_frame.setStyleSheet("""
                 background-color: #222222;
                 border: 1px solid #3F51B5;
@@ -154,7 +153,7 @@ class MessageBubble(QWidget):
         elif role == "tool":
             # Left-aligned compact amber bubble
             self.main_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self.bubble_frame.setFixedWidth(550)
+            self.bubble_frame.setMaximumWidth(550)
             self.bubble_frame.setStyleSheet("""
                 background-color: #2D281E;
                 border: 1px solid #F1C40F;

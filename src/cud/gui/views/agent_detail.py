@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
+from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -30,6 +32,16 @@ from cud.gui.widgets.tasks_tab import TasksTab
 from cud.gui.widgets.mcp_tab import MCPTab
 from cud.gui.widgets.subagents_tab import SubagentsTab
 from cud.gui.widgets.history_tab import HistoryTab
+
+_log = logging.getLogger(__name__)
+
+
+def _load_tab_safe(label: str, loader: Any, *args: Any) -> None:
+    """Invoke *loader* catching exceptions so one broken tab cannot abort the rest."""
+    try:
+        loader(*args)
+    except Exception as exc:
+        _log.warning("Failed to load tab '%s': %s", label, exc)
 
 
 class AgentDetailView(QWidget):
@@ -180,6 +192,9 @@ class AgentDetailView(QWidget):
     def set_agent(self, agent_name: str) -> None:
         """Contextualize work view and load agent configs to their respective tabs.
 
+        Each tab is loaded independently so that a single corrupt file does not
+        prevent the remaining tabs from being populated.
+
         Args:
             agent_name: Canonical name of the target agent.
         """
@@ -188,15 +203,16 @@ class AgentDetailView(QWidget):
 
         agent_dir = agent_home(agent_name)
 
-        # Load configurations
-        self.tab_settings.load_data(agent_dir)
-        self.tab_prompt.load_file(agent_dir / "AGENT.md")
-        self.tab_memory.load_file(agent_dir / "MEMORY.md")
-        self.tab_skills.load_data(agent_dir)
-        self.tab_tasks.load_data(agent_dir)
-        self.tab_mcp.load_data(agent_dir)
-        self.tab_subagents.load_data(agent_dir)
-        self.tab_history.load_data(agent_dir)
+        # Load configurations — each tab is isolated so one failure does not
+        # prevent the remaining tabs from loading.
+        _load_tab_safe("Settings", self.tab_settings.load_data, agent_dir)
+        _load_tab_safe("Prompt", self.tab_prompt.load_file, agent_dir / "AGENT.md")
+        _load_tab_safe("Memory", self.tab_memory.load_file, agent_dir / "MEMORY.md")
+        _load_tab_safe("Skills", self.tab_skills.load_data, agent_dir)
+        _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir)
+        _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir)
+        _load_tab_safe("Subagents", self.tab_subagents.load_data, agent_dir)
+        _load_tab_safe("History", self.tab_history.load_data, agent_dir)
 
     def on_category_changed(self, row: int) -> None:
         """Switch stacked page upon clicking navigation bar category index."""
@@ -282,8 +298,9 @@ class AgentDetailView(QWidget):
         try:
             agent_dir = agent_home(self.agent_name)
 
-            # 1. Save Settings (settings.yaml)
+            # 1. Save Settings (settings.yaml) — includes subagents
             settings = self.tab_settings.save_data()
+            settings.subagents = self.tab_subagents.save_data()
             save_settings(agent_dir, settings)
 
             # 2. Save Prompt (AGENT.md)
@@ -295,7 +312,13 @@ class AgentDetailView(QWidget):
             # 4. Save MCP Config (mcp.json)
             self.tab_mcp.save_data(agent_dir)
 
-            # 5. Trigger Async Restart
+            # 5. Save Skills (workspace/skills/)
+            self.tab_skills.save_data(agent_dir)
+
+            # 6. Save Tasks (workspace/tasks/)
+            self.tab_tasks.save_data(agent_dir)
+
+            # 7. Trigger Async Restart
             worker = SystemdWorker("restart", self.agent_name)
             worker.signals.finished.connect(self._on_save_restart_finished)
             worker.signals.error.connect(self._on_save_restart_error)

@@ -183,7 +183,7 @@ class InventoryView(QWidget):
             is_active: Flag indicating active systemctl state.
             status_text: Terminal description.
         """
-        agent_name = service_name.replace("cud-gateway-", "").replace(".service", "")
+        agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
 
         for row in range(self.model.rowCount()):
             item = self.model.item(row)

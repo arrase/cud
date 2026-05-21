@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from cud.config.settings import GatewaySettings, ModelSettings, RuntimeSettings, Settings, load_settings
+
+_log = logging.getLogger(__name__)
 
 
 class SettingsTab(QWidget):
@@ -125,8 +127,8 @@ class SettingsTab(QWidget):
         """Read settings yaml values and bind them to interactive form inputs."""
         try:
             self.current_settings = load_settings(agent_dir)
-        except Exception:
-            # Fallback if settings.yaml doesn't exist
+        except Exception as exc:
+            _log.warning("Failed to load settings.yaml from %s: %s", agent_dir, exc)
             self.current_settings = Settings()
 
         m = self.current_settings.model
