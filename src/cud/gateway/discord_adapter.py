@@ -12,7 +12,7 @@ from discord.ext import commands
 
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
-from cud.config.settings import load_settings, save_settings
+from cud.config.settings import load_settings
 from cud.gateway._discord_utils import DISCORD_MAX_LENGTH, send_response, split_message
 from cud.gateway.scheduler import TaskScheduler
 

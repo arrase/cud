@@ -31,10 +31,20 @@ Cud relies on **Ollama** for local inference.
 
 ### 1. Installation
 
-*Requires Python 3.11+.*
+*Requires Python 3.11+ and a Linux distribution with systemd.*
+
+You can install Cud automatically using our install script (requires `pipx` or `uv`):
 
 ```bash
-pipx install git+https://github.com/arrase/cud.git
+curl -fsSL https://raw.githubusercontent.com/arrase/cud/main/install.sh | bash
+```
+
+**Manual Installation:**
+
+```bash
+pipx install --force git+https://github.com/arrase/cud.git
+# or
+uv tool install --force git+https://github.com/arrase/cud.git
 ```
 
 ### 2. Configure Ollama
@@ -75,6 +85,44 @@ cud tui researcher
 ```
 
 Inside the TUI, type `/help` to see available commands, or `/quit` to exit.
+
+### 6. Desktop Graphical User Interface (GUI)
+
+Cud includes a powerful desktop application to manage your agents, monitor their memory, and configure tools interactively.
+
+```bash
+# Start the desktop GUI
+cud-gui
+```
+
+## 📸 Screenshots
+
+**Dashboard**
+![Dashboard](screenshots/dashboard.png)
+
+**General Configuration**
+![General Configuration](screenshots/general.png)
+
+**Agent Instructions**
+![Agent Instructions](screenshots/instructions.png)
+
+**Memory Management**
+![Memory Management](screenshots/menory.png)
+
+**Skills Management**
+![Skills Management](screenshots/skills.png)
+
+**Periodic Tasks**
+![Periodic Tasks](screenshots/tasks.png)
+
+**MCP Servers**
+![MCP Servers](screenshots/mcp.png)
+
+**Subagents**
+![Subagents](screenshots/subagents.png)
+
+**Chat History**
+![Chat History](screenshots/history.png)
 
 ---
 
