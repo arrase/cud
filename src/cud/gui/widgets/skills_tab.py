@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QFont
+from PySide6.QtGui import QColor, QDesktopServices
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -26,83 +26,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cud.gui.core.styles import (
+    ACTION_BTN_ADD,
+    ACTION_BTN_DELETE,
+    ACTION_BTN_FOLDER,
+    ACTION_BTN_UPDATE,
+    TABLE_STYLE,
+    monospace_font,
+)
 from cud.tools._frontmatter import parse_frontmatter, render_frontmatter
 from cud.tools.skills import discover_skills
 
 _log = logging.getLogger(__name__)
-
-# Shared premium table stylesheet
-_TABLE_STYLE = """
-    QTableWidget {
-        background-color: #1A1A1A;
-        alternate-background-color: #222222;
-        gridline-color: #2B2B2B;
-        border: 1px solid #2B2B2B;
-        border-radius: 6px;
-        color: #E0E0E0;
-    }
-    QTableWidget::item {
-        padding: 8px;
-    }
-    QHeaderView::section {
-        background-color: #2A2A2A;
-        color: #FFFFFF;
-        padding: 6px;
-        font-weight: bold;
-        border: 1px solid #2B2B2B;
-    }
-    QTableWidget::item:selected {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-    }
-"""
-
-_ACTION_BTN_ADD = """
-    QPushButton {
-        background-color: #2ECC71;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #27AE60; }
-"""
-
-_ACTION_BTN_DELETE = """
-    QPushButton {
-        background-color: #E74C3C;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #C0392B; }
-"""
-
-_ACTION_BTN_UPDATE = """
-    QPushButton {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 8px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #303F9F; }
-"""
-
-_ACTION_BTN_FOLDER = """
-    QPushButton {
-        background-color: #2A2A2A;
-        color: #FFFFFF;
-        border: 1px solid #3F51B5;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-weight: bold;
-    }
-    QPushButton:hover {
-        background-color: #3F51B5;
-    }
-"""
 
 
 class SkillsTab(QWidget):
@@ -146,7 +81,7 @@ class SkillsTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet(_TABLE_STYLE)
+        self.table.setStyleSheet(TABLE_STYLE)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.left_col.addWidget(self.table, 1)
 
@@ -154,15 +89,15 @@ class SkillsTab(QWidget):
         self.table_actions = QHBoxLayout()
 
         self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(_ACTION_BTN_ADD)
+        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
         self.btn_add.clicked.connect(self._on_add_clicked)
 
         self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(_ACTION_BTN_DELETE)
+        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
 
         self.btn_open_folder = QPushButton("📂 Open Folder")
-        self.btn_open_folder.setStyleSheet(_ACTION_BTN_FOLDER)
+        self.btn_open_folder.setStyleSheet(ACTION_BTN_FOLDER)
         self.btn_open_folder.clicked.connect(self._on_open_folder_clicked)
 
         self.table_actions.addWidget(self.btn_add)
@@ -188,21 +123,14 @@ class SkillsTab(QWidget):
 
         self.input_body = QPlainTextEdit()
         self.input_body.setPlaceholderText("Skill body content (markdown)...")
-        mono_font = QFont("Courier New")
-        if not mono_font.exactMatch():
-            mono_font = QFont("Fira Code")
-            if not mono_font.exactMatch():
-                mono_font = QFont("monospace")
-        mono_font.setStyleHint(QFont.StyleHint.Monospace)
-        mono_font.setPointSize(10)
-        self.input_body.setFont(mono_font)
+        self.input_body.setFont(monospace_font())
 
         self.form_layout.addRow("Name:", self.input_name)
         self.form_layout.addRow("Description:", self.input_description)
         self.form_layout.addRow("Content (SKILL.md):", self.input_body)
 
         self.btn_update = QPushButton("💾 Update Skill Data")
-        self.btn_update.setStyleSheet(_ACTION_BTN_UPDATE)
+        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
         self.btn_update.clicked.connect(self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
@@ -261,10 +189,15 @@ class SkillsTab(QWidget):
             (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
             written_dirs.add(dir_name)
 
-        # Remove skill directories that were deleted from memory
+        # Remove skill directories that were deleted from memory, but skip
+        # internal directories like __pycache__ or hidden dot-dirs.
         if skills_dir.exists():
             for existing in skills_dir.iterdir():
-                if existing.is_dir() and existing.name not in written_dirs:
+                if not existing.is_dir():
+                    continue
+                if existing.name.startswith(("__", ".")):
+                    continue
+                if existing.name not in written_dirs:
                     shutil.rmtree(existing)
 
     def _refresh_table(self) -> None:

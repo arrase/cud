@@ -223,9 +223,14 @@ def _run_async_sync(coro: Any) -> Any:
     except RuntimeError:
         _log.debug("_run_async_sync: no event loop — using asyncio.run()")
         return asyncio.run(coro)
-    # Inside a running loop (e.g. Discord's asyncio.to_thread). Spin up a
-    # dedicated thread so asyncio.run() can create its own loop.
+    # Inside a running loop (e.g. Discord's asyncio.to_thread). Use a shared
+    # module-level thread so asyncio.run() can create its own loop without
+    # creating a new pool on every call.
     _log.debug("_run_async_sync: event loop detected — using thread pool")
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
+    return _SYNC_POOL.submit(asyncio.run, coro).result()
+
+
+# Module-level single-thread pool reused by _run_async_sync to avoid
+# creating a new ThreadPoolExecutor on each invocation.
+_SYNC_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 

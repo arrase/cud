@@ -17,7 +17,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     the block is parsed and returned as a dict.  Otherwise an empty dict
     is returned and *body* equals the full text.
     """
-    match = _FRONTMATTER_RE.search(text)
+    match = _FRONTMATTER_RE.match(text)
     if not match:
         return {}, text
     try:

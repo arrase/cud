@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cud.gui.core.styles import ACTION_BTN_ADD, ACTION_BTN_DELETE, ACTION_BTN_UPDATE, TABLE_STYLE
 from cud.tools.mcp import MCPConfig, load_mcp_config, save_mcp_config
 
 
@@ -67,59 +68,18 @@ class MCPTab(QWidget):
         self.servers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.servers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         self.servers_table.setAlternatingRowColors(True)
-        self.servers_table.setStyleSheet("""
-            QTableWidget {
-                background-color: #1A1A1A;
-                alternate-background-color: #222222;
-                gridline-color: #2B2B2B;
-                border: 1px solid #2B2B2B;
-                border-radius: 6px;
-                color: #E0E0E0;
-            }
-            QTableWidget::item {
-                padding: 6px;
-            }
-            QHeaderView::section {
-                background-color: #2A2A2A;
-                color: #FFFFFF;
-                padding: 6px;
-                font-weight: bold;
-                border: 1px solid #2B2B2B;
-            }
-            QTableWidget::item:selected {
-                background-color: #3F51B5;
-                color: #FFFFFF;
-            }
-        """)
+        self.servers_table.setStyleSheet(TABLE_STYLE)
         self.servers_table.itemSelectionChanged.connect(self.on_server_selected)
         self.left_col.addWidget(self.servers_table, 1)
 
         # Table Action Buttons
         self.table_actions = QHBoxLayout()
         self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet("""
-            QPushButton {
-                background-color: #2ECC71;
-                color: #FFFFFF;
-                font-weight: bold;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #27AE60; }
-        """)
+        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
         self.btn_add.clicked.connect(self.on_add_clicked)
 
         self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: #E74C3C;
-                color: #FFFFFF;
-                font-weight: bold;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #C0392B; }
-        """)
+        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
         self.btn_delete.clicked.connect(self.on_delete_clicked)
 
         self.table_actions.addWidget(self.btn_add)
@@ -160,16 +120,7 @@ class MCPTab(QWidget):
         self.form_layout.addRow("Environment (KEY=VALUE):", self.input_env)
 
         self.btn_update = QPushButton("💾 Update Server Data")
-        self.btn_update.setStyleSheet("""
-            QPushButton {
-                background-color: #3F51B5;
-                color: #FFFFFF;
-                font-weight: bold;
-                padding: 8px;
-                border-radius: 4px;
-            }
-            QPushButton:hover { background-color: #303F9F; }
-        """)
+        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
         self.btn_update.clicked.connect(self.on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 

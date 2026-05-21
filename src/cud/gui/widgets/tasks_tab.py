@@ -10,7 +10,7 @@ from typing import Any
 
 from croniter import croniter
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -29,69 +29,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from cud.gui.core.styles import ACTION_BTN_ADD, ACTION_BTN_DELETE, ACTION_BTN_UPDATE, TABLE_STYLE, monospace_font
 from cud.tools._frontmatter import render_frontmatter
 from cud.tools.tasks import discover_tasks
 
 _log = logging.getLogger(__name__)
-
-# Shared premium table stylesheet
-_TABLE_STYLE = """
-    QTableWidget {
-        background-color: #1A1A1A;
-        alternate-background-color: #222222;
-        gridline-color: #2B2B2B;
-        border: 1px solid #2B2B2B;
-        border-radius: 6px;
-        color: #E0E0E0;
-    }
-    QTableWidget::item {
-        padding: 8px;
-    }
-    QHeaderView::section {
-        background-color: #2A2A2A;
-        color: #FFFFFF;
-        padding: 6px;
-        font-weight: bold;
-        border: 1px solid #2B2B2B;
-    }
-    QTableWidget::item:selected {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-    }
-"""
-
-_ACTION_BTN_ADD = """
-    QPushButton {
-        background-color: #2ECC71;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #27AE60; }
-"""
-
-_ACTION_BTN_DELETE = """
-    QPushButton {
-        background-color: #E74C3C;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #C0392B; }
-"""
-
-_ACTION_BTN_UPDATE = """
-    QPushButton {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 8px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #303F9F; }
-"""
 
 
 class TasksTab(QWidget):
@@ -139,7 +81,7 @@ class TasksTab(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet(_TABLE_STYLE)
+        self.table.setStyleSheet(TABLE_STYLE)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.left_col.addWidget(self.table, 1)
 
@@ -147,11 +89,11 @@ class TasksTab(QWidget):
         self.table_actions = QHBoxLayout()
 
         self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(_ACTION_BTN_ADD)
+        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
         self.btn_add.clicked.connect(self._on_add_clicked)
 
         self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(_ACTION_BTN_DELETE)
+        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
 
         self.table_actions.addWidget(self.btn_add)
@@ -188,14 +130,7 @@ class TasksTab(QWidget):
 
         self.input_prompt = QPlainTextEdit()
         self.input_prompt.setPlaceholderText("Task prompt / instructions for the agent...")
-        mono_font = QFont("Courier New")
-        if not mono_font.exactMatch():
-            mono_font = QFont("Fira Code")
-            if not mono_font.exactMatch():
-                mono_font = QFont("monospace")
-        mono_font.setStyleHint(QFont.StyleHint.Monospace)
-        mono_font.setPointSize(10)
-        self.input_prompt.setFont(mono_font)
+        self.input_prompt.setFont(monospace_font())
 
         self.form_layout.addRow("Name:", self.input_name)
         self.form_layout.addRow("Schedule (Cron):", self.input_schedule)
@@ -206,7 +141,7 @@ class TasksTab(QWidget):
         self.form_layout.addRow("Prompt:", self.input_prompt)
 
         self.btn_update = QPushButton("💾 Update Task Data")
-        self.btn_update.setStyleSheet(_ACTION_BTN_UPDATE)
+        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
         self.btn_update.clicked.connect(self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
@@ -266,18 +201,25 @@ class TasksTab(QWidget):
             if entry.get("user_id") is not None:
                 metadata["user_id"] = entry["user_id"]
 
+            # render_frontmatter already appends the body right after the
+            # closing "---", so we prepend a single newline only to ensure
+            # a blank line separating frontmatter from body content.
             body = entry.get("prompt") or ""
-            if not body.startswith("\n"):
-                body = "\n" + body
+            body = "\n" + body.lstrip("\n")
 
             content = render_frontmatter(metadata, body)
             (task_dir / "TASK.md").write_text(content, encoding="utf-8")
             written_dirs.add(dir_name)
 
-        # Remove task directories that were deleted from memory
+        # Remove task directories that were deleted from memory, but skip
+        # internal directories like __pycache__ or hidden dot-dirs.
         if tasks_dir.exists():
             for existing in tasks_dir.iterdir():
-                if existing.is_dir() and existing.name not in written_dirs:
+                if not existing.is_dir():
+                    continue
+                if existing.name.startswith(("__", ".")):
+                    continue
+                if existing.name not in written_dirs:
                     shutil.rmtree(existing)
 
     def _refresh_table(self) -> None:

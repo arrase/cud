@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -20,12 +19,9 @@ from PySide6.QtWidgets import (
 )
 
 from cud.config.paths import agent_home
-from cud.config.settings import save_settings
+from cud.config.settings import Settings, load_settings, save_settings
 from cud.gui.core.system_workers import SystemdWorker
-
-# Import implemented widgets
-from cud.gui.widgets.prompt_tab import PromptTab
-from cud.gui.widgets.memory_tab import MemoryTab
+from cud.gui.widgets.markdown_file_tab import MarkdownFileTab
 from cud.gui.widgets.settings_tab import SettingsTab
 from cud.gui.widgets.skills_tab import SkillsTab
 from cud.gui.widgets.tasks_tab import TasksTab
@@ -36,10 +32,10 @@ from cud.gui.widgets.history_tab import HistoryTab
 _log = logging.getLogger(__name__)
 
 
-def _load_tab_safe(label: str, loader: Any, *args: Any) -> None:
+def _load_tab_safe(label: str, loader: object, *args: object) -> None:
     """Invoke *loader* catching exceptions so one broken tab cannot abort the rest."""
     try:
-        loader(*args)
+        loader(*args)  # type: ignore[operator]
     except Exception as exc:
         _log.warning("Failed to load tab '%s': %s", label, exc)
 
@@ -158,8 +154,8 @@ class AgentDetailView(QWidget):
 
         # Create tabs
         self.tab_settings = SettingsTab()
-        self.tab_prompt = PromptTab()
-        self.tab_memory = MemoryTab()
+        self.tab_prompt = MarkdownFileTab("# Agent Directive\n\nWrite the agent prompt here...")
+        self.tab_memory = MarkdownFileTab("# Memory Context\n\nLong-term memory records...")
         self.tab_skills = SkillsTab()
         self.tab_tasks = TasksTab()
         self.tab_mcp = MCPTab()
@@ -187,10 +183,11 @@ class AgentDetailView(QWidget):
         # Transaction Loading dialogue
         self.loading_dialog = None
 
-
-
     def set_agent(self, agent_name: str) -> None:
         """Contextualize work view and load agent configs to their respective tabs.
+
+        Settings are loaded **once** and shared with tabs that need them, avoiding
+        redundant disk reads and guaranteeing all tabs see the same data snapshot.
 
         Each tab is loaded independently so that a single corrupt file does not
         prevent the remaining tabs from being populated.
@@ -203,16 +200,23 @@ class AgentDetailView(QWidget):
 
         agent_dir = agent_home(agent_name)
 
+        # Load settings once and share the snapshot across tabs that need it.
+        try:
+            settings = load_settings(agent_dir)
+        except Exception as exc:
+            _log.warning("Failed to load settings for '%s': %s", agent_name, exc)
+            settings = Settings()
+
         # Load configurations — each tab is isolated so one failure does not
         # prevent the remaining tabs from loading.
-        _load_tab_safe("Settings", self.tab_settings.load_data, agent_dir)
+        _load_tab_safe("Settings", self.tab_settings.load_from_settings, settings)
         _load_tab_safe("Prompt", self.tab_prompt.load_file, agent_dir / "AGENT.md")
         _load_tab_safe("Memory", self.tab_memory.load_file, agent_dir / "MEMORY.md")
         _load_tab_safe("Skills", self.tab_skills.load_data, agent_dir)
         _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir)
         _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir)
-        _load_tab_safe("Subagents", self.tab_subagents.load_data, agent_dir)
-        _load_tab_safe("History", self.tab_history.load_data, agent_dir)
+        _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents)
+        _load_tab_safe("History", self.tab_history.load_data, agent_dir, agent_name)
 
     def on_category_changed(self, row: int) -> None:
         """Switch stacked page upon clicking navigation bar category index."""
@@ -286,7 +290,11 @@ class AgentDetailView(QWidget):
         QMessageBox.critical(self, "Service Error", f"Failed to execute '{action}':\n\n{error_message}")
 
     def on_save_clicked(self) -> None:
-        """Atomic serializing workflow: Block screen, write files, call async restart systemd."""
+        """Atomic serializing workflow: Block screen, write files, call async restart systemd.
+
+        Note: History (tab_history) is read-only — it displays LangGraph
+        checkpoint data and is intentionally excluded from the save workflow.
+        """
         self.setEnabled(False)
         self.loading_dialog = QProgressDialog("Saving files and restarting agent...", None, 0, 0, self)
         self.loading_dialog.setWindowTitle("Save Changes")
@@ -298,7 +306,7 @@ class AgentDetailView(QWidget):
         try:
             agent_dir = agent_home(self.agent_name)
 
-            # 1. Save Settings (settings.yaml) — includes subagents
+            # 1. Build a single Settings object from both tabs that contribute to it.
             settings = self.tab_settings.save_data()
             settings.subagents = self.tab_subagents.save_data()
             save_settings(agent_dir, settings)

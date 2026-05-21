@@ -51,12 +51,12 @@ def save_mcp_config(agent_dir: Path, config: MCPConfig) -> None:
 
 def _filter_tools(tools: list[Any], config: MCPConfig) -> list[Any]:
     """Return only the tools allowed by the MCP config."""
-    names = [tool.name for tool in tools]
-    if config.allowed_tools:
-        allowed = set(config.allowed_tools)
-        names = [n for n in names if n in allowed]
-    enabled = set(names) - set(config.disabled_tools)
-    return [tool for tool in tools if tool.name in enabled]
+    allowed = set(config.allowed_tools) if config.allowed_tools else None
+    disabled = set(config.disabled_tools)
+    return [
+        tool for tool in tools
+        if (allowed is None or tool.name in allowed) and tool.name not in disabled
+    ]
 
 
 async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[], Coroutine[Any, Any, None]] | None]:

@@ -182,6 +182,7 @@ class HistoryTab(QWidget):
         self.agent_name = ""
         self.agent_dir: Path | None = None
         self.selected_thread_id = ""
+        self._load_generation: int = 0  # monotonic counter to guard against stale callbacks
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 16, 16, 16)
@@ -278,11 +279,18 @@ class HistoryTab(QWidget):
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.bubbles_layout.addWidget(lbl)
 
-    def load_data(self, agent_dir: Path) -> None:
-        """Contextualize database and reload conversation history threads asynchronously."""
+    def load_data(self, agent_dir: Path, agent_name: str) -> None:
+        """Contextualize database and reload conversation history threads asynchronously.
+
+        Args:
+            agent_dir: Resolved path to the agent home directory.
+            agent_name: Canonical agent name (passed explicitly to avoid fragile
+                path-based derivation).
+        """
         self.agent_dir = agent_dir
-        self.agent_name = agent_dir.name
+        self.agent_name = agent_name
         self.selected_thread_id = ""
+        self._load_generation += 1
 
         # Trigger Thread Loader Worker
         self.threads_list.clear()
@@ -341,6 +349,8 @@ class HistoryTab(QWidget):
             return
 
         self.selected_thread_id = thread_id
+        self._load_generation += 1
+        generation = self._load_generation
         self.clear_bubbles_layout()
 
         lbl_loading = QLabel("Loading thread messages...")
@@ -349,9 +359,25 @@ class HistoryTab(QWidget):
         self.bubbles_layout.addWidget(lbl_loading)
 
         worker = LoadMessagesWorker(self.agent_name, thread_id)
-        worker.signals.messages_loaded.connect(self.on_messages_loaded)
+        # Capture the generation to discard stale callbacks from rapid clicks.
+        worker.signals.messages_loaded.connect(
+            lambda tid, msgs, gen=generation: self._on_messages_loaded_guarded(tid, msgs, gen)
+        )
         worker.signals.error.connect(self.on_db_error)
         QThreadPool.globalInstance().start(worker)
+
+    def _on_messages_loaded_guarded(
+        self, thread_id: str, messages: list[dict[str, str]], generation: int
+    ) -> None:
+        """Render conversation bubbles only if this callback is still current.
+
+        The *generation* counter prevents stale results from overwriting
+        a newer thread selection when the user clicks rapidly.
+        """
+        if generation != self._load_generation:
+            return  # A newer load has been started — discard this result.
+
+        self.on_messages_loaded(thread_id, messages)
 
     def on_messages_loaded(self, thread_id: str, messages: list[dict[str, str]]) -> None:
         """Render standard conversation bubbles in the layout viewport."""

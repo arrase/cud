@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import logging
-from pathlib import Path
-
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -23,63 +20,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cud.config.settings import SubAgentMCPServer, SubAgentSettings, load_settings
-
-_log = logging.getLogger(__name__)
-
-_ACTION_BTN_ADD = """
-    QPushButton {
-        background-color: #2ECC71;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #27AE60; }
-"""
-
-_ACTION_BTN_DELETE = """
-    QPushButton {
-        background-color: #E74C3C;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 6px 12px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #C0392B; }
-"""
-
-_ACTION_BTN_UPDATE = """
-    QPushButton {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-        font-weight: bold;
-        padding: 8px;
-        border-radius: 4px;
-    }
-    QPushButton:hover { background-color: #303F9F; }
-"""
-
-_LIST_STYLE = """
-    QListWidget {
-        background-color: #1A1A1A;
-        border: 1px solid #2B2B2B;
-        border-radius: 6px;
-        color: #E0E0E0;
-    }
-    QListWidget::item {
-        padding: 10px;
-        border-bottom: 1px solid #222222;
-        border-radius: 4px;
-    }
-    QListWidget::item:hover {
-        background-color: #26262B;
-    }
-    QListWidget::item:selected {
-        background-color: #3F51B5;
-        color: #FFFFFF;
-    }
-"""
+from cud.config.settings import SubAgentMCPServer, SubAgentSettings
+from cud.gui.core.styles import (
+    ACTION_BTN_ADD,
+    ACTION_BTN_DELETE,
+    ACTION_BTN_UPDATE,
+    LIST_STYLE,
+    monospace_font,
+)
 
 
 class SubagentsTab(QWidget):
@@ -87,7 +35,6 @@ class SubagentsTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.agent_dir: Path | None = None
         self._subagents: list[SubAgentSettings] = []
         self._selected_index: int = -1
 
@@ -117,17 +64,17 @@ class SubagentsTab(QWidget):
         self.left_col.setSpacing(8)
 
         self.subagent_list = QListWidget()
-        self.subagent_list.setStyleSheet(_LIST_STYLE)
+        self.subagent_list.setStyleSheet(LIST_STYLE)
         self.subagent_list.currentRowChanged.connect(self._on_list_selection_changed)
         self.left_col.addWidget(self.subagent_list, 1)
 
         self.list_actions = QHBoxLayout()
         self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(_ACTION_BTN_ADD)
+        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
         self.btn_add.clicked.connect(self._on_add_clicked)
 
         self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(_ACTION_BTN_DELETE)
+        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
         self.btn_delete.clicked.connect(self._on_delete_clicked)
 
         self.list_actions.addWidget(self.btn_add)
@@ -159,16 +106,11 @@ class SubagentsTab(QWidget):
         self.input_ctx.setValue(0)
         self.input_ctx.setSpecialValueText("Default")
 
+        mono = monospace_font()
+
         self.input_prompt = QPlainTextEdit()
         self.input_prompt.setPlaceholderText("System prompt / directive for the subagent...")
-        mono_font = QFont("Courier New")
-        if not mono_font.exactMatch():
-            mono_font = QFont("Fira Code")
-            if not mono_font.exactMatch():
-                mono_font = QFont("monospace")
-        mono_font.setStyleHint(QFont.StyleHint.Monospace)
-        mono_font.setPointSize(10)
-        self.input_prompt.setFont(mono_font)
+        self.input_prompt.setFont(mono)
         self.input_prompt.setFixedHeight(120)
 
         self.input_skills = QLineEdit()
@@ -180,7 +122,7 @@ class SubagentsTab(QWidget):
             "name command arg1 arg2\n"
             "e.g., postgres npx -y @modelcontextprotocol/server-postgres"
         )
-        self.input_mcp.setFont(mono_font)
+        self.input_mcp.setFont(mono)
         self.input_mcp.setFixedHeight(100)
 
         self.form_layout.addRow("Name:", self.input_name)
@@ -192,7 +134,7 @@ class SubagentsTab(QWidget):
         self.form_layout.addRow("MCP Servers:", self.input_mcp)
 
         self.btn_update = QPushButton("💾 Update Subagent Data")
-        self.btn_update.setStyleSheet(_ACTION_BTN_UPDATE)
+        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
         self.btn_update.clicked.connect(self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
@@ -201,18 +143,14 @@ class SubagentsTab(QWidget):
 
         self.main_layout.addLayout(self.split_layout, 1)
 
-    def load_data(self, agent_dir: Path) -> None:
-        """Parse settings.yaml to recover subagent configurations."""
-        self.agent_dir = agent_dir
-        self._subagents.clear()
+    def load_from_subagents(self, subagents: list[SubAgentSettings]) -> None:
+        """Populate the tab from an already-loaded list of subagent settings.
+
+        This avoids the redundant ``load_settings()`` call — the caller provides
+        the subagents extracted from the shared settings snapshot.
+        """
+        self._subagents = list(subagents)
         self._selected_index = -1
-
-        try:
-            settings = load_settings(agent_dir)
-            self._subagents = list(settings.subagents)
-        except Exception as exc:
-            _log.warning("Failed to load subagents from %s: %s", agent_dir, exc)
-
         self._refresh_list()
 
     def save_data(self) -> list[SubAgentSettings]:

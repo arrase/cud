@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-from pathlib import Path
-
 from PySide6.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
@@ -17,9 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cud.config.settings import GatewaySettings, ModelSettings, RuntimeSettings, Settings, load_settings
-
-_log = logging.getLogger(__name__)
+from cud.config.settings import GatewaySettings, ModelSettings, RuntimeSettings, Settings
 
 
 class SettingsTab(QWidget):
@@ -123,13 +118,13 @@ class SettingsTab(QWidget):
         else:
             self.input_token.setEchoMode(QLineEdit.EchoMode.Password)
 
-    def load_data(self, agent_dir: Path) -> None:
-        """Read settings yaml values and bind them to interactive form inputs."""
-        try:
-            self.current_settings = load_settings(agent_dir)
-        except Exception as exc:
-            _log.warning("Failed to load settings.yaml from %s: %s", agent_dir, exc)
-            self.current_settings = Settings()
+    def load_from_settings(self, settings: Settings) -> None:
+        """Bind an already-loaded *Settings* object to the interactive form inputs.
+
+        This avoids a redundant ``load_settings()`` disk read — the caller
+        provides the shared settings snapshot.
+        """
+        self.current_settings = settings
 
         m = self.current_settings.model
         self.input_model_name.setText(m.name)

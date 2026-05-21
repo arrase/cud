@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 
 from cud.gui.views.inventory import InventoryView
 from cud.gui.views.agent_detail import AgentDetailView
+
+ICON_PATH = Path(__file__).parent / "assets" / "icon.png"
 
 
 class MainWindow(QMainWindow):
@@ -14,6 +19,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Cud Agent Controller")
+        self.setWindowIcon(QIcon(str(ICON_PATH)))
         self.resize(1100, 750)
 
         # Root stacked widget

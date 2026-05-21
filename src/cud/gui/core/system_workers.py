@@ -64,26 +64,13 @@ class SystemdWorker(QRunnable):
                 self.signals.status_checked.emit(s_name, is_active, status_text)
                 self.signals.finished.emit(self.action, s_name, status_text)
 
-            elif self.action == "start":
-                res = systemctl_user("start", s_name)
+            elif self.action in ("start", "stop", "restart"):
+                res = systemctl_user(self.action, s_name)
                 if res.returncode != 0:
                     err_msg = res.stderr.strip() or f"systemctl process exit code {res.returncode}"
-                    raise RuntimeError(f"Failed to start service: {err_msg}")
-                self.signals.finished.emit(self.action, s_name, "Service started successfully")
-
-            elif self.action == "stop":
-                res = systemctl_user("stop", s_name)
-                if res.returncode != 0:
-                    err_msg = res.stderr.strip() or f"systemctl process exit code {res.returncode}"
-                    raise RuntimeError(f"Failed to stop service: {err_msg}")
-                self.signals.finished.emit(self.action, s_name, "Service stopped successfully")
-
-            elif self.action == "restart":
-                res = systemctl_user("restart", s_name)
-                if res.returncode != 0:
-                    err_msg = res.stderr.strip() or f"systemctl process exit code {res.returncode}"
-                    raise RuntimeError(f"Failed to restart service: {err_msg}")
-                self.signals.finished.emit(self.action, s_name, "Service restarted successfully")
+                    raise RuntimeError(f"Failed to {self.action} service: {err_msg}")
+                past = {"start": "started", "stop": "stopped", "restart": "restarted"}
+                self.signals.finished.emit(self.action, s_name, f"Service {past[self.action]} successfully")
 
             elif self.action == "journalctl":
                 res = journalctl_user(self.agent, lines=self.lines)
