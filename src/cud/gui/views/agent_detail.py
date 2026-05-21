@@ -45,68 +45,104 @@ class AgentDetailView(QWidget):
 
     back_to_inventory = Signal()
 
+    # Compact pill-shaped button stylesheet for service lifecycle controls.
+    _SERVICE_BTN = """
+        QPushButton {{
+            color: {fg};
+            background-color: transparent;
+            border: 1px solid {fg};
+            border-radius: 12px;
+            padding: 4px 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        QPushButton:hover {{
+            background-color: {fg};
+            color: #FFFFFF;
+        }}
+    """
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.agent_name = ""
 
-        # Layout
+        # Root layout
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(16, 16, 16, 16)
-        self.main_layout.setSpacing(12)
+        self.main_layout.setContentsMargins(16, 14, 16, 12)
+        self.main_layout.setSpacing(0)
 
-        # 1. Header Toolbar
-        self.header = QHBoxLayout()
+        # ── 1. Navigation header: Back + Title ──────────────────────────
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
 
-        self.back_btn = QPushButton("◀ Back")
+        self.back_btn = QPushButton("◀  Back")
+        self.back_btn.setStyleSheet("""
+            QPushButton {
+                color: #8A8A8F;
+                background: transparent;
+                border: none;
+                font-size: 13px;
+                padding: 4px 8px;
+            }
+            QPushButton:hover { color: #FFFFFF; }
+        """)
         self.back_btn.clicked.connect(self.back_to_inventory.emit)
 
         self.title_label = QLabel("Agent Administration")
-        self.title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #FFFFFF;")
+        self.title_label.setStyleSheet(
+            "font-size: 19px; font-weight: bold; color: #FFFFFF; padding-left: 4px;"
+        )
 
-        # Service life-cycle controls
+        header.addWidget(self.back_btn)
+        header.addWidget(self.title_label, 1)
+        self.main_layout.addLayout(header)
+
+        # ── 2. Service lifecycle toolbar ────────────────────────────────
+        svc_bar = QHBoxLayout()
+        svc_bar.setContentsMargins(0, 6, 0, 8)
+        svc_bar.setSpacing(8)
+
+        svc_label = QLabel("Service")
+        svc_label.setStyleSheet("color: #666666; font-size: 11px; padding-right: 2px;")
+        svc_bar.addWidget(svc_label)
+
         self.btn_start = QPushButton("▶ Start")
-        self.btn_start.setStyleSheet("color: #2ECC71; border-color: #2ECC71;")
+        self.btn_start.setStyleSheet(self._SERVICE_BTN.format(fg="#2ECC71"))
         self.btn_start.clicked.connect(self.on_start_clicked)
+        svc_bar.addWidget(self.btn_start)
 
         self.btn_stop = QPushButton("⏹ Stop")
-        self.btn_stop.setStyleSheet("color: #E74C3C; border-color: #E74C3C;")
+        self.btn_stop.setStyleSheet(self._SERVICE_BTN.format(fg="#E74C3C"))
         self.btn_stop.clicked.connect(self.on_stop_clicked)
+        svc_bar.addWidget(self.btn_stop)
 
         self.btn_restart = QPushButton("⟳ Restart")
-        self.btn_restart.setStyleSheet("color: #F1C40F; border-color: #F1C40F;")
+        self.btn_restart.setStyleSheet(self._SERVICE_BTN.format(fg="#F1C40F"))
         self.btn_restart.clicked.connect(self.on_restart_clicked)
+        svc_bar.addWidget(self.btn_restart)
 
         self.btn_tui = QPushButton(">_ Open TUI")
-        self.btn_tui.setStyleSheet("color: #3F51B5; border-color: #3F51B5;")
+        self.btn_tui.setStyleSheet(self._SERVICE_BTN.format(fg="#7986CB"))
         self.btn_tui.clicked.connect(self.on_tui_clicked)
+        svc_bar.addWidget(self.btn_tui)
 
-        self.btn_save = QPushButton("💾 Save & Restart Agent")
-        self.btn_save.setStyleSheet("background-color: #3F51B5; color: #FFFFFF; font-weight: bold;")
-        self.btn_save.clicked.connect(self.on_save_clicked)
+        svc_bar.addStretch(1)
+        self.main_layout.addLayout(svc_bar)
 
-        self.header.addWidget(self.back_btn)
-        self.header.addWidget(self.title_label, 1)
-        self.header.addWidget(self.btn_start)
-        self.header.addWidget(self.btn_stop)
-        self.header.addWidget(self.btn_restart)
-        self.header.addWidget(self.btn_tui)
-        self.header.addWidget(self.btn_save)
+        # Thin separator
+        sep_top = QWidget()
+        sep_top.setFixedHeight(1)
+        sep_top.setStyleSheet("background-color: #2B2B2B;")
+        self.main_layout.addWidget(sep_top)
 
-        self.main_layout.addLayout(self.header)
-
-        # Separator line
-        line = QWidget()
-        line.setFixedHeight(1)
-        line.setStyleSheet("background-color: #2B2B2B;")
-        self.main_layout.addWidget(line)
-
-        # 2. Body Splitter (Left navigation, Right content area)
+        # ── 3. Body: Navigation list + Content stack ────────────────────
         self.body_layout = QHBoxLayout()
-        self.body_layout.setSpacing(16)
+        self.body_layout.setContentsMargins(0, 10, 0, 0)
+        self.body_layout.setSpacing(14)
 
-        # Left Vertical Navigation list
+        # Left vertical navigation
         self.nav_list = QListWidget()
-        self.nav_list.setFixedWidth(180)
+        self.nav_list.setFixedWidth(190)
         self.nav_list.setSpacing(4)
         self.nav_list.setStyleSheet("""
             QListWidget {
@@ -128,21 +164,20 @@ class AgentDetailView(QWidget):
             }
         """)
 
-        # Add categories
         self.categories = [
-            "⚙️ General",
-            "🧠 Instructions",
-            "💾 Memory",
-            "🛠️ Skills",
-            "📅 Scheduled Tasks (Cron)",
-            "🔌 MCP Protocol",
-            "🤖 Subagents",
-            "📜 Chat History",
+            "⚙️  General",
+            "🧠  Instructions",
+            "💾  Memory",
+            "🛠️  Skills",
+            "📅  Scheduled Tasks",
+            "🔌  MCP Protocol",
+            "🤖  Subagents",
+            "📜  Chat History",
         ]
         self.nav_list.addItems(self.categories)
         self.nav_list.currentRowChanged.connect(self.on_category_changed)
 
-        # Right Stack Content area
+        # Right content stack
         self.content_stack = QStackedWidget()
         self.content_stack.setStyleSheet("""
             QStackedWidget {
@@ -176,6 +211,46 @@ class AgentDetailView(QWidget):
         self.body_layout.addWidget(self.content_stack, 1)
 
         self.main_layout.addLayout(self.body_layout, 1)
+
+        # ── 4. Footer action bar ───────────────────────────────────────
+        sep_bottom = QWidget()
+        sep_bottom.setFixedHeight(1)
+        sep_bottom.setStyleSheet("background-color: #2B2B2B;")
+        self.main_layout.addWidget(sep_bottom)
+
+        footer = QHBoxLayout()
+        footer.setContentsMargins(0, 10, 0, 2)
+        footer.setSpacing(12)
+
+        footer_hint = QLabel("Changes are applied after saving.")
+        footer_hint.setStyleSheet("color: #555555; font-size: 11px;")
+        footer.addWidget(footer_hint)
+        footer.addStretch(1)
+
+        # Use && so Qt renders a literal ampersand instead of a mnemonic
+        self.btn_save = QPushButton("💾  Save && Restart Agent")
+        self.btn_save.setMinimumHeight(36)
+        self.btn_save.setStyleSheet("""
+            QPushButton {
+                background-color: #3F51B5;
+                color: #FFFFFF;
+                font-weight: bold;
+                font-size: 13px;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 28px;
+            }
+            QPushButton:hover {
+                background-color: #5C6BC0;
+            }
+            QPushButton:pressed {
+                background-color: #303F9F;
+            }
+        """)
+        self.btn_save.clicked.connect(self.on_save_clicked)
+        footer.addWidget(self.btn_save)
+
+        self.main_layout.addLayout(footer)
 
         # Selection state
         self.nav_list.setCurrentRow(0)
