@@ -95,34 +95,7 @@ Cud includes a powerful desktop application to manage your agents, monitor their
 cud-gui
 ```
 
-## 📸 Screenshots
-
-**Dashboard**
 ![Dashboard](screenshots/dashboard.png)
-
-**General Configuration**
-![General Configuration](screenshots/general.png)
-
-**Agent Instructions**
-![Agent Instructions](screenshots/instructions.png)
-
-**Memory Management**
-![Memory Management](screenshots/menory.png)
-
-**Skills Management**
-![Skills Management](screenshots/skills.png)
-
-**Periodic Tasks**
-![Periodic Tasks](screenshots/tasks.png)
-
-**MCP Servers**
-![MCP Servers](screenshots/mcp.png)
-
-**Subagents**
-![Subagents](screenshots/subagents.png)
-
-**Chat History**
-![Chat History](screenshots/history.png)
 
 ---
 
@@ -152,14 +125,22 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 - 💻 `workspace/`: The dedicated directory where the agent runs commands and edits files.
 - 🧰 `workspace/skills/`: A directory for custom Markdown-defined abilities.
 
+![General Configuration](screenshots/general.png)
+![Agent Instructions](screenshots/instructions.png)
+![Memory Management](screenshots/menory.png)
+
 ### 🪄 Skills (`SKILL.md`)
 Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.
+
+![Skills Management](screenshots/skills.png)
 
 ### 🗜️ Context Compression
 To keep agents fast and prevent them from hitting token limits during long conversations, Cud features automatic context compression.
 - **Automatic Summarization**: When a conversation gets too long, older messages are automatically summarized by the LLM.
 - **No Data Lost**: The full, uncompressed conversation history is safely offloaded to a markdown file in the agent's workspace (`workspace/conversation_history/<thread_id>.md`).
 - **Manual Compaction**: Agents have access to a `compact_conversation` tool, allowing them to proactively free up context when finishing a large task.
+
+![Chat History](screenshots/history.png)
 
 ### ⏱️ Periodic Tasks
 Agents can execute scheduled, periodic tasks autonomously. Tasks are defined as Markdown files (`TASK.md`) located in the agent's `workspace/tasks/<name>/` directory.
@@ -184,6 +165,8 @@ Summarize the top 3 stories.
 Make it sound enthusiastic!
 ```
 
+![Periodic Tasks](screenshots/tasks.png)
+
 ### 🌐 Model Context Protocol (MCP)
 Native support for MCP allows you to connect your agents to external tool servers (e.g., Brave Search, GitHub, Google Drive) with a single command.
 
@@ -198,6 +181,8 @@ cud mcp add researcher "npx -y @modelcontextprotocol/server-postgres postgresql:
     --name db-search \
     --env POSTGRES_PASSWORD=secret
 ```
+
+![MCP Servers](screenshots/mcp.png)
 
 ### 🤖 Custom Subagents
 Define specialized subagents that your main agent can delegate tasks to. Each subagent has its own isolated context, skills, and MCP servers — keeping the orchestrator's context clean and focused.
@@ -233,6 +218,8 @@ subagents:
 - **Context isolation**: Subagent tool calls don't bloat the main agent's context — only the final result is returned.
 - **Environment injection**: Use `${VAR_NAME}` in MCP `env` fields to inject secrets from the host environment.
 - **Graceful failures**: If a subagent's MCP server fails to load (e.g., missing env vars), it is skipped and the agent continues normally.
+
+![Subagents](screenshots/subagents.png)
 
 ---
 
