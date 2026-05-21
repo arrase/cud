@@ -86,6 +86,44 @@ cud tui researcher
 
 Inside the TUI, type `/help` to see available commands, or `/quit` to exit.
 
+### 6. Desktop Graphical User Interface (GUI)
+
+Cud includes a powerful desktop application to manage your agents, monitor their memory, and configure tools interactively.
+
+```bash
+# Start the desktop GUI
+cud-gui
+```
+
+## 📸 Screenshots
+
+**Dashboard**
+![Dashboard](screenshots/dashboard.png)
+
+**General Configuration**
+![General Configuration](screenshots/general.png)
+
+**Agent Instructions**
+![Agent Instructions](screenshots/instructions.png)
+
+**Memory Management**
+![Memory Management](screenshots/menory.png)
+
+**Skills Management**
+![Skills Management](screenshots/skills.png)
+
+**Periodic Tasks**
+![Periodic Tasks](screenshots/tasks.png)
+
+**MCP Servers**
+![MCP Servers](screenshots/mcp.png)
+
+**Subagents**
+![Subagents](screenshots/subagents.png)
+
+**Chat History**
+![Chat History](screenshots/history.png)
+
 ---
 
 ## 💬 Discord Commands
