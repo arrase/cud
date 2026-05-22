@@ -140,8 +140,6 @@ To keep agents fast and prevent them from hitting token limits during long conve
 - **No Data Lost**: The full, uncompressed conversation history is safely offloaded to a markdown file in the agent's workspace (`workspace/conversation_history/<thread_id>.md`).
 - **Manual Compaction**: Agents have access to a `compact_conversation` tool, allowing them to proactively free up context when finishing a large task.
 
-![Chat History](screenshots/history.png)
-
 ### ⏱️ Periodic Tasks
 Agents can execute scheduled, periodic tasks autonomously. Tasks are defined as Markdown files (`TASK.md`) located in the agent's `workspace/tasks/<name>/` directory.
 - Use a YAML frontmatter to configure the `schedule` (cron expression) and the destination (`channel_id` or `user_id`).

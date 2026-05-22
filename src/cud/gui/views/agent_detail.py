@@ -27,7 +27,6 @@ from cud.gui.widgets.skills_tab import SkillsTab
 from cud.gui.widgets.tasks_tab import TasksTab
 from cud.gui.widgets.mcp_tab import MCPTab
 from cud.gui.widgets.subagents_tab import SubagentsTab
-from cud.gui.widgets.history_tab import HistoryTab
 
 _log = logging.getLogger(__name__)
 
@@ -172,7 +171,6 @@ class AgentDetailView(QWidget):
             "📅  Scheduled Tasks",
             "🔌  MCP Protocol",
             "🤖  Subagents",
-            "📜  Chat History",
         ]
         self.nav_list.addItems(self.categories)
         self.nav_list.currentRowChanged.connect(self.on_category_changed)
@@ -195,7 +193,6 @@ class AgentDetailView(QWidget):
         self.tab_tasks = TasksTab()
         self.tab_mcp = MCPTab()
         self.tab_subagents = SubagentsTab()
-        self.tab_history = HistoryTab()
 
         # Add widgets in same index order as categories list
         self.content_stack.addWidget(self.tab_settings)   # Index 0
@@ -205,7 +202,6 @@ class AgentDetailView(QWidget):
         self.content_stack.addWidget(self.tab_tasks)      # Index 4
         self.content_stack.addWidget(self.tab_mcp)        # Index 5
         self.content_stack.addWidget(self.tab_subagents)  # Index 6
-        self.content_stack.addWidget(self.tab_history)    # Index 7
 
         self.body_layout.addWidget(self.nav_list)
         self.body_layout.addWidget(self.content_stack, 1)
@@ -291,7 +287,6 @@ class AgentDetailView(QWidget):
         _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir)
         _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir)
         _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents)
-        _load_tab_safe("History", self.tab_history.load_data, agent_dir, agent_name)
 
     def on_category_changed(self, row: int) -> None:
         """Switch stacked page upon clicking navigation bar category index."""
@@ -365,11 +360,7 @@ class AgentDetailView(QWidget):
         QMessageBox.critical(self, "Service Error", f"Failed to execute '{action}':\n\n{error_message}")
 
     def on_save_clicked(self) -> None:
-        """Atomic serializing workflow: Block screen, write files, call async restart systemd.
-
-        Note: History (tab_history) is read-only — it displays LangGraph
-        checkpoint data and is intentionally excluded from the save workflow.
-        """
+        """Atomic serializing workflow: Block screen, write files, call async restart systemd."""
         self.setEnabled(False)
         self.loading_dialog = QProgressDialog("Saving files and restarting agent...", None, 0, 0, self)
         self.loading_dialog.setWindowTitle("Save Changes")
