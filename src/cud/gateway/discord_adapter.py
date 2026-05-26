@@ -87,12 +87,9 @@ class DiscordGateway:
 
     async def cmd_new(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        old = self.sessions.pop(thread_id, None)
-        if old:
-            await old.clear_history()
-            await old.aclose()
-        self.session(thread_id)
-        await interaction.response.send_message("New Cud session started. History cleared.", ephemeral=True)
+        runtime = self.session(thread_id)
+        result = await runtime.new_session()
+        await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
         thread_id = self._get_thread_id(interaction.channel)

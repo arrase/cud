@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
+from uuid import uuid4
 
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
@@ -134,16 +135,10 @@ class AgentRuntime:
         await self.graph.aupdate_state(config, {"messages": _drop_last_exchange(messages)})
         return "Last exchange removed."
 
-    async def clear_history(self) -> str:
-        db_path = self.agent_dir / "history.db"
-        if not db_path.exists():
-            return "History is already empty."
-        try:
-            db_path.unlink()
-        except OSError as exc:
-            return f"Failed to clear history: {exc}"
-        await self.reload()
-        return "History cleared."
+    async def new_session(self) -> str:
+        """Start a fresh session by switching to a new unique thread_id."""
+        self.thread_id = uuid4().hex
+        return f"New session started (thread: {self.thread_id})."
 
     async def view_memory(self) -> str:
         path = self.agent_dir / "MEMORY.md"

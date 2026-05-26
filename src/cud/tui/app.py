@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from uuid import uuid4
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
@@ -166,8 +167,8 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
         _system_message("Goodbye!", "cud.dim", console)
         return True
     elif command == "/new":
-        await runtime.clear_history()
-        _system_message("Session history cleared.", "cud.success", console)
+        result = await runtime.new_session()
+        _system_message(result, "cud.success", console)
     elif command == "/undo":
         result = await runtime.undo_last_exchange()
         _system_message(result, "cud.success", console)
@@ -210,7 +211,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
 # ---------------------------------------------------------------------------
 
 
-async def run_tui(agent_name: str, thread_id: str = "local-tui") -> int:
+async def run_tui(agent_name: str, thread_id: str = "") -> int:
     """Run the TUI loop for the given agent."""
     console = Console(theme=_THEME)
     agent_dir = agent_home(agent_name)
@@ -223,6 +224,7 @@ async def run_tui(agent_name: str, thread_id: str = "local-tui") -> int:
     prompt_message = _build_prompt_message()
     session: PromptSession[str] = PromptSession(completer=_completer)
 
+    thread_id = thread_id or uuid4().hex
     _welcome_banner(agent_name, settings.model.name, thread_id, console)
 
     async with AgentRuntime(agent_dir, thread_id=thread_id) as runtime:
