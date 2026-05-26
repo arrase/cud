@@ -34,9 +34,9 @@ def load_mcp_config(agent_dir: Path) -> MCPConfig:
         return MCPConfig()
     raw = json.loads(path.read_text(encoding="utf-8") or "{}")
     return MCPConfig(
-        servers=raw.get("servers", {}) or {},
-        allowed_tools=raw.get("allowedTools", raw.get("allowed_tools", [])) or [],
-        disabled_tools=raw.get("disabledTools", raw.get("disabled_tools", [])) or [],
+        servers=raw.get("servers", {}),
+        allowed_tools=raw.get("allowedTools", raw.get("allowed_tools", [])),
+        disabled_tools=raw.get("disabledTools", raw.get("disabled_tools", [])),
     )
 
 
@@ -101,8 +101,7 @@ def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, A
 
     async def cleanup() -> None:
         try:
-            if hasattr(client, "close"):
-                await client.close()
+            await client.close()
         except Exception:
             _log.warning("MCP client cleanup failed", exc_info=True)
 

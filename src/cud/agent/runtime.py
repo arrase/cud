@@ -26,7 +26,6 @@ _log = logging.getLogger(__name__)
 @dataclass(slots=True)
 class RuntimeResponse:
     content: str
-    raw: dict[str, Any] | None = None
 
 
 @dataclass(slots=True)
@@ -119,10 +118,6 @@ class AgentRuntime:
         thread = thread_id or self.thread_id
         if self.graph is None:
             await self.reload()
-        if self.graph is None:
-            return RuntimeResponse(
-                "Cud runtime dependencies are not installed. Install package dependencies to invoke an agent."
-            )
         config = {"configurable": {"thread_id": thread}}
         raw = await self.graph.ainvoke({"messages": [{"role": "user", "content": message}]}, config)
         return _response_from_raw(raw)
@@ -130,12 +125,10 @@ class AgentRuntime:
     async def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
         if self.graph is None:
             await self.reload()
-        if self.graph is None:
-            return "Undo requires an initialized graph."
         thread = thread_id or self.thread_id
         config = {"configurable": {"thread_id": thread}}
         state = await self.graph.aget_state(config)
-        messages = list((getattr(state, "values", {}) or {}).get("messages", []))
+        messages = list(state.values.get("messages", []))
         if not messages:
             return "No messages to undo."
         await self.graph.aupdate_state(config, {"messages": _drop_last_exchange(messages)})
@@ -180,21 +173,19 @@ class AgentRuntime:
 # ---------------------------------------------------------------------------
 
 
-def _extract_content(raw: Any) -> str:
-    if isinstance(raw, dict):
-        messages = raw.get("messages")
-        if messages:
-            last = messages[-1]
-            if isinstance(last, dict):
-                return str(last.get("content", ""))
-            return str(getattr(last, "content", ""))
-        return str(raw.get("content", raw))
+def _extract_content(raw: dict[str, Any]) -> str:
+    messages = raw.get("messages")
+    if messages:
+        last = messages[-1]
+        if isinstance(last, dict):
+            return str(last.get("content", ""))
+        return str(getattr(last, "content", ""))
     return str(raw)
 
 
-def _response_from_raw(raw: Any) -> RuntimeResponse:
+def _response_from_raw(raw: dict[str, Any]) -> RuntimeResponse:
     content = _extract_content(raw).strip()
-    return RuntimeResponse(content=content or "The agent finished without text output.", raw=raw)
+    return RuntimeResponse(content=content or "The agent finished without text output.")
 
 
 def _drop_last_exchange(messages: list[Any]) -> list[Any]:

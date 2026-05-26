@@ -176,13 +176,6 @@ class InventoryView(QWidget):
             QThreadPool.globalInstance().start(worker)
 
     def on_status_checked(self, service_name: str, is_active: bool, status_text: str) -> None:
-        """Asynchronous callback handling service state checks and updating standard model.
-
-        Args:
-            service_name: Name of the target systemd service.
-            is_active: Flag indicating active systemctl state.
-            status_text: Terminal description.
-        """
         agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
 
         for row in range(self.model.rowCount()):
@@ -197,7 +190,6 @@ class InventoryView(QWidget):
                 break
 
     def on_create_agent_clicked(self) -> None:
-        """Scaffold new agent templates directory after validation check."""
         name, ok = QInputDialog.getText(
             self,
             "Create Agent",
@@ -220,15 +212,8 @@ class InventoryView(QWidget):
             QMessageBox.critical(self, "Invalid Name", str(e))
         except FileExistsError as e:
             QMessageBox.critical(self, "Agent Already Exists", str(e))
-        except Exception as e:
-            QMessageBox.critical(self, "Unexpected Error", f"An error occurred while creating the agent: {e}")
 
     def on_agent_double_clicked(self, index) -> None:
-        """Trigger workspace detailed view transition upon double clicking list item.
-
-        Args:
-            index: Target QModelIndex selection.
-        """
         item = self.model.itemFromIndex(index)
         if item and item.isEnabled():
             self.agent_selected.emit(item.text())

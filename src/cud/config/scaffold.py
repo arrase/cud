@@ -44,7 +44,7 @@ def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: boo
     bundled = template_root / "skills"
     try:
         entries = list(bundled.iterdir())
-    except (TypeError, FileNotFoundError, AttributeError):
+    except Exception:
         return
     for skill in entries:
         if skill.name == "__pycache__":
@@ -63,7 +63,7 @@ def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: boo
 
 def _is_directory_resource(resource: Any) -> bool:
     """Check if an importlib.resources traversable is a directory."""
-    return hasattr(resource, "iterdir") and (not hasattr(resource, "open") or resource.is_dir())
+    return hasattr(resource, "is_dir") and resource.is_dir()
 
 
 def _init_history_db(path: Path) -> None:

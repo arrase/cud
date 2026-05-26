@@ -144,11 +144,7 @@ class SubagentsTab(QWidget):
         self.main_layout.addLayout(self.split_layout, 1)
 
     def load_from_subagents(self, subagents: list[SubAgentSettings]) -> None:
-        """Populate the tab from an already-loaded list of subagent settings.
-
-        This avoids the redundant ``load_settings()`` call — the caller provides
-        the subagents extracted from the shared settings snapshot.
-        """
+        """Populate the tab from a list of subagent settings."""
         self._subagents = list(subagents)
         self._selected_index = -1
         self._refresh_list()

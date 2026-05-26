@@ -73,14 +73,9 @@ class DiscordGateway:
                 response = await runtime.invoke(message.content, thread_id=thread_id)
 
             content = response.content
-            if not content:
-                return
-
             chunks = split_message(content)
-            first, rest = chunks[0], chunks[1:]
-
-            await send_response(message, first)
-            for chunk in rest:
+            await send_response(message, chunks[0])
+            for chunk in chunks[1:]:
                 await message.channel.send(chunk)
 
         except Exception as exc:

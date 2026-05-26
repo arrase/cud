@@ -42,15 +42,9 @@ class MainWindow(QMainWindow):
         self.show_inventory()
 
     def show_agent_detail(self, agent_name: str) -> None:
-        """Switch view to the workspace detail of the selected agent.
-
-        Args:
-            agent_name: Canonical name of the selected agent.
-        """
         self.agent_detail_view.set_agent(agent_name)
         self.stack.setCurrentWidget(self.agent_detail_view)
 
     def show_inventory(self) -> None:
-        """Switch view back to the landing agents inventory list."""
         self.inventory_view.reload_agents()
         self.stack.setCurrentWidget(self.inventory_view)

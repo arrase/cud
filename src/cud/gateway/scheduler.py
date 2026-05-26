@@ -61,8 +61,6 @@ class TaskScheduler:
                 await self._execute(task)
                 tasks = self._load_tasks()
 
-            except asyncio.CancelledError:
-                raise
             except Exception:
                 _log.exception("Scheduler loop error; retrying in 30s")
                 await asyncio.sleep(30)

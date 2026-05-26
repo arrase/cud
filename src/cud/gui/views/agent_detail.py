@@ -251,21 +251,17 @@ class AgentDetailView(QWidget):
         # Selection state
         self.nav_list.setCurrentRow(0)
 
-        # Transaction Loading dialogue
+        # Transaction loading dialogue
         self.loading_dialog = None
 
+    def _dismiss_loading(self) -> None:
+        """Close and clear the loading dialog if open."""
+        if self.loading_dialog:
+            self.loading_dialog.close()
+            self.loading_dialog = None
+
     def set_agent(self, agent_name: str) -> None:
-        """Contextualize work view and load agent configs to their respective tabs.
-
-        Settings are loaded **once** and shared with tabs that need them, avoiding
-        redundant disk reads and guaranteeing all tabs see the same data snapshot.
-
-        Each tab is loaded independently so that a single corrupt file does not
-        prevent the remaining tabs from being populated.
-
-        Args:
-            agent_name: Canonical name of the target agent.
-        """
+        """Load agent configs into their respective tabs."""
         self.agent_name = agent_name
         self.title_label.setText(f"Agent Administration: {agent_name}")
 
@@ -289,24 +285,19 @@ class AgentDetailView(QWidget):
         _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents)
 
     def on_category_changed(self, row: int) -> None:
-        """Switch stacked page upon clicking navigation bar category index."""
-        if 0 <= row < self.content_stack.count():
+        if row >= 0:
             self.content_stack.setCurrentIndex(row)
 
     def on_start_clicked(self) -> None:
-        """Asynchronously trigger systemd start service."""
         self._run_async_control("start", "Starting gateway service...")
 
     def on_stop_clicked(self) -> None:
-        """Asynchronously trigger systemd stop service."""
         self._run_async_control("stop", "Stopping gateway service...")
 
     def on_restart_clicked(self) -> None:
-        """Asynchronously trigger systemd restart service."""
         self._run_async_control("restart", "Restarting gateway service...")
 
     def on_tui_clicked(self) -> None:
-        """Launch CUD interactive TUI terminal console window asynchronously."""
         try:
             # Attempt launching terminal emulator
             subprocess.Popen(
@@ -331,7 +322,7 @@ class AgentDetailView(QWidget):
                 )
 
     def _run_async_control(self, action: str, label_text: str) -> None:
-        """Spawn background control workers in QThreadPool to isolate systemd processes."""
+        """Spawn background control workers in QThreadPool."""
         self.setEnabled(False)
         self.loading_dialog = QProgressDialog(label_text, None, 0, 0, self)
         self.loading_dialog.setWindowTitle("Service Control")
@@ -346,21 +337,17 @@ class AgentDetailView(QWidget):
         QThreadPool.globalInstance().start(worker)
 
     def _on_control_finished(self, action: str, service_name: str, message: str) -> None:
-        if self.loading_dialog:
-            self.loading_dialog.close()
-            self.loading_dialog = None
+        self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(self, "Service Action Completed", f"Action '{action}' completed:\n\n{message}")
 
     def _on_control_error(self, action: str, service_name: str, error_message: str) -> None:
-        if self.loading_dialog:
-            self.loading_dialog.close()
-            self.loading_dialog = None
+        self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.critical(self, "Service Error", f"Failed to execute '{action}':\n\n{error_message}")
 
     def on_save_clicked(self) -> None:
-        """Atomic serializing workflow: Block screen, write files, call async restart systemd."""
+        """Save all tabs to disk and trigger an async service restart."""
         self.setEnabled(False)
         self.loading_dialog = QProgressDialog("Saving files and restarting agent...", None, 0, 0, self)
         self.loading_dialog.setWindowTitle("Save Changes")
@@ -399,9 +386,7 @@ class AgentDetailView(QWidget):
             QThreadPool.globalInstance().start(worker)
 
         except Exception as e:
-            if self.loading_dialog:
-                self.loading_dialog.close()
-                self.loading_dialog = None
+            self._dismiss_loading()
             self.setEnabled(True)
             QMessageBox.critical(self, "Save Failed", f"Error writing configurations to disk:\n\n{e}")
 
@@ -410,9 +395,7 @@ class AgentDetailView(QWidget):
         QTimer.singleShot(1500, self._complete_save_workflow)
 
     def _complete_save_workflow(self) -> None:
-        if self.loading_dialog:
-            self.loading_dialog.close()
-            self.loading_dialog = None
+        self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(
             self,
@@ -421,9 +404,7 @@ class AgentDetailView(QWidget):
         )
 
     def _on_save_restart_error(self, action: str, service_name: str, error_message: str) -> None:
-        if self.loading_dialog:
-            self.loading_dialog.close()
-            self.loading_dialog = None
+        self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.critical(
             self,

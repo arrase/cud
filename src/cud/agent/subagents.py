@@ -25,12 +25,8 @@ def build_subagents(
     run_async: Callable[..., Any],
 ) -> list[dict[str, Any]]:
     """Convert ``SubAgentSettings`` into dicts for ``create_deep_agent(subagents=...)``."""
-    specs = []
-    for sa in subagent_settings:
-        spec = _build_spec(sa, model_settings=model_settings, exit_stack=exit_stack, run_async=run_async)
-        if spec is not None:
-            specs.append(spec)
-    return specs
+    return [_build_spec(sa, model_settings=model_settings, exit_stack=exit_stack, run_async=run_async)
+            for sa in subagent_settings]
 
 
 def _build_spec(
@@ -39,7 +35,7 @@ def _build_spec(
     model_settings: ModelSettings,
     exit_stack: AsyncExitStack,
     run_async: Callable[..., Any],
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     spec: dict[str, Any] = {
         "name": sa.name,
         "description": sa.description,

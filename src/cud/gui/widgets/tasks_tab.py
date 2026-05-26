@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,8 +31,6 @@ from PySide6.QtWidgets import (
 from cud.gui.core.styles import ACTION_BTN_ADD, ACTION_BTN_DELETE, ACTION_BTN_UPDATE, TABLE_STYLE, monospace_font
 from cud.tools._frontmatter import render_frontmatter
 from cud.tools.tasks import discover_tasks
-
-_log = logging.getLogger(__name__)
 
 
 class TasksTab(QWidget):
@@ -157,11 +154,7 @@ class TasksTab(QWidget):
         self._selected_index = -1
 
         tasks_dir = agent_dir / "workspace" / "tasks"
-        try:
-            tasks = discover_tasks(tasks_dir)
-        except Exception as exc:
-            _log.warning("Failed to discover tasks in %s: %s", tasks_dir, exc)
-            tasks = []
+        tasks = discover_tasks(tasks_dir)
 
         for task in tasks:
             self._tasks_data.append({
@@ -204,7 +197,7 @@ class TasksTab(QWidget):
             # render_frontmatter already appends the body right after the
             # closing "---", so we prepend a single newline only to ensure
             # a blank line separating frontmatter from body content.
-            body = entry.get("prompt") or ""
+            body = entry["prompt"]
             body = "\n" + body.lstrip("\n")
 
             content = render_frontmatter(metadata, body)
@@ -258,7 +251,7 @@ class TasksTab(QWidget):
             self.table.setItem(idx, 2, dest_item)
 
             # 4. Enabled/Disabled
-            enabled = entry.get("enabled", True)
+            enabled = entry["enabled"]
             enabled_str = "Active ✓" if enabled else "Inactive ✗"
             enabled_item = QTableWidgetItem(enabled_str)
             enabled_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)

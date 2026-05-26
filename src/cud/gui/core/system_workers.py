@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Final
-
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from cud.gateway.systemd import (
@@ -12,9 +10,6 @@ from cud.gateway.systemd import (
     systemctl_user,
     systemd_available,
 )
-
-# Standard error log format for robust recovery
-UNKNOWN_ERROR: Final[str] = "An unexpected error occurred: {}"
 
 
 class SystemWorkerSignals(QObject):
@@ -37,13 +32,6 @@ class SystemdWorker(QRunnable):
     """Runnable worker to manage systemd service state asynchronously."""
 
     def __init__(self, action: str, agent: str, lines: int = 50) -> None:
-        """Initialize the systemd worker thread.
-
-        Args:
-            action: Command to execute ("status", "start", "stop", "restart", "journalctl").
-            agent: The name of the agent service to operate on.
-            lines: Number of log lines to retrieve (applicable for "journalctl").
-        """
         super().__init__()
         self.action = action
         self.agent = agent

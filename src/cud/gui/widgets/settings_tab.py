@@ -108,22 +108,13 @@ class SettingsTab(QWidget):
         self.main_layout.addStretch(1)
 
     def on_show_token_toggled(self, state: int) -> None:
-        """Toggle QLineEdit password character visibility mask.
-
-        Args:
-            state: Toggled integer checkbox state.
-        """
         if self.chk_show_token.isChecked():
             self.input_token.setEchoMode(QLineEdit.EchoMode.Normal)
         else:
             self.input_token.setEchoMode(QLineEdit.EchoMode.Password)
 
     def load_from_settings(self, settings: Settings) -> None:
-        """Bind an already-loaded *Settings* object to the interactive form inputs.
-
-        This avoids a redundant ``load_settings()`` disk read — the caller
-        provides the shared settings snapshot.
-        """
+        """Bind a Settings object to the form inputs."""
         self.current_settings = settings
 
         m = self.current_settings.model
@@ -139,7 +130,7 @@ class SettingsTab(QWidget):
         self.input_token.setText(g.token)
 
     def save_data(self) -> Settings:
-        """Read active form inputs and return an updated Settings dataclass."""
+        """Return an updated Settings from the current form values."""
         m_settings = ModelSettings(
             provider="ollama",
             name=self.input_model_name.text().strip(),

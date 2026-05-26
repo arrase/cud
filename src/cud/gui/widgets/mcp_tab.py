@@ -217,9 +217,7 @@ class MCPTab(QWidget):
 
         # Row name is first item
         name = selected_items[0].text()
-        server_data = self.current_config.servers.get(name)
-        if not server_data:
-            return
+        server_data = self.current_config.servers[name]
 
         self.selected_server_name = name
         self.input_name.setText(name)
@@ -342,23 +340,15 @@ class MCPTab(QWidget):
         QMessageBox.information(self, "Data Updated", f"Server '{name}' data updated in memory.")
 
     def save_data(self, agent_dir: Path) -> None:
-        """Write current MCPConfig objects back to disk in mcp.json format."""
-        # Read allowed tools array from GUI comma separated lists
+        """Write current MCPConfig to mcp.json."""
         allowed_str = self.input_allowed.text().strip()
-        if allowed_str:
-            self.current_config.allowed_tools = sorted(
-                {t.strip() for t in allowed_str.split(",") if t.strip()}
-            )
-        else:
-            self.current_config.allowed_tools = []
+        self.current_config.allowed_tools = sorted(
+            {t.strip() for t in allowed_str.split(",") if t.strip()}
+        ) if allowed_str else []
 
-        # Read disabled tools array from GUI comma separated lists
         disabled_str = self.input_disabled.text().strip()
-        if disabled_str:
-            self.current_config.disabled_tools = sorted(
-                {t.strip() for t in disabled_str.split(",") if t.strip()}
-            )
-        else:
-            self.current_config.disabled_tools = []
+        self.current_config.disabled_tools = sorted(
+            {t.strip() for t in disabled_str.split(",") if t.strip()}
+        ) if disabled_str else []
 
         save_mcp_config(agent_dir, self.current_config)

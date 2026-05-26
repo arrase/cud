@@ -57,8 +57,7 @@ class Settings:
     subagents: list[SubAgentSettings] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any] | None) -> Self:
-        raw = raw or {}
+    def from_dict(cls, raw: dict[str, Any]) -> Self:
         return cls(
             model=_dataclass_from_dict(ModelSettings, raw.get("model")),
             runtime=_dataclass_from_dict(RuntimeSettings, raw.get("runtime")),

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -36,8 +35,6 @@ from cud.gui.core.styles import (
 )
 from cud.tools._frontmatter import parse_frontmatter, render_frontmatter
 from cud.tools.skills import discover_skills
-
-_log = logging.getLogger(__name__)
 
 
 class SkillsTab(QWidget):
@@ -146,11 +143,7 @@ class SkillsTab(QWidget):
         self._selected_index = -1
 
         skills_dir = agent_dir / "workspace" / "skills"
-        try:
-            skills = discover_skills(skills_dir)
-        except Exception as exc:
-            _log.warning("Failed to discover skills in %s: %s", skills_dir, exc)
-            skills = []
+        skills = discover_skills(skills_dir)
 
         for skill in skills:
             try:
@@ -181,7 +174,7 @@ class SkillsTab(QWidget):
             skill_dir = skills_dir / dir_name
             skill_dir.mkdir(parents=True, exist_ok=True)
 
-            metadata = dict(entry.get("metadata") or {})
+            metadata = dict(entry["metadata"])
             metadata["name"] = entry["name"]
             metadata["description"] = entry["description"]
 
@@ -315,7 +308,7 @@ class SkillsTab(QWidget):
         entry["body"] = self.input_body.toPlainText()
 
         # Update metadata to reflect new name/description
-        metadata = entry.get("metadata") or {}
+        metadata = entry["metadata"]
         metadata["name"] = name
         metadata["description"] = entry["description"]
         entry["metadata"] = metadata

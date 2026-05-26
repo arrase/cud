@@ -10,12 +10,7 @@ _AGENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 def cud_home() -> Path:
-    """Return the Cud home directory.
-
-    `CUD_HOME` is supported for tests and deployments. The canonical default is
-    `~/.cud`, and agent homes live below `agents/`.
-    """
-
+    """Return ``$CUD_HOME`` (default ``~/.cud``)."""
     return Path(os.environ.get("CUD_HOME", "~/.cud")).expanduser()
 
 

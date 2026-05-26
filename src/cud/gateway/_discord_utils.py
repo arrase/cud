@@ -43,8 +43,7 @@ def split_message(content: str, limit: int = DISCORD_MAX_LENGTH) -> list[str]:
             cut = limit  # Hard cut — no good break point.
 
         chunk = remaining[:cut]
-        if chunk:
-            chunks.append(chunk)
+        chunks.append(chunk)
         remaining = remaining[cut:].lstrip("\n ")
 
     return chunks
