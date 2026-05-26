@@ -100,10 +100,11 @@ def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, A
     """Build an async cleanup callback for an MCP client."""
 
     async def cleanup() -> None:
-        try:
-            await client.close()
-        except Exception:
-            _log.warning("MCP client cleanup failed", exc_info=True)
+        if hasattr(client, "close"):
+            try:
+                await client.close()  # type: ignore[attr-defined]
+            except Exception:
+                _log.warning("MCP client cleanup failed", exc_info=True)
 
     return cleanup
 
