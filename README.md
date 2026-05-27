@@ -15,6 +15,8 @@ Designed to be lightweight, straightforward, and incredibly easy to use, Cud bri
 - 🛠️ **Tool-Rich**: Built-in support for persistent shell sessions, surgical filesystem operations, Custom SKILLs, and the Model Context Protocol (MCP).
 - 👻 **Daemon-Ready**: Seamlessly run your agents as background services using `systemd`.
 
+![Cud Flow](screenshots/cud-flow.jpeg)
+
 ---
 
 ## 🦙 Ollama & Tool Calling
