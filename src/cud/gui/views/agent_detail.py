@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -31,10 +33,10 @@ from cud.gui.widgets.subagents_tab import SubagentsTab
 _log = logging.getLogger(__name__)
 
 
-def _load_tab_safe(label: str, loader: object, *args: object) -> None:
+def _load_tab_safe(label: str, loader: Callable[..., Any], *args: Any) -> None:
     """Invoke *loader* catching exceptions so one broken tab cannot abort the rest."""
     try:
-        loader(*args)  # type: ignore[operator]
+        loader(*args)
     except Exception as exc:
         _log.warning("Failed to load tab '%s': %s", label, exc)
 
@@ -64,6 +66,7 @@ class AgentDetailView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.agent_name = ""
+        self._active_workers: set[SystemdWorker] = set()
 
         # Root layout
         self.main_layout = QVBoxLayout(self)
@@ -334,6 +337,9 @@ class AgentDetailView(QWidget):
         worker = SystemdWorker(action, self.agent_name)
         worker.signals.finished.connect(self._on_control_finished)
         worker.signals.error.connect(self._on_control_error)
+        worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+        worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+        self._active_workers.add(worker)
         QThreadPool.globalInstance().start(worker)
 
     def _on_control_finished(self, action: str, service_name: str, message: str) -> None:
@@ -383,6 +389,9 @@ class AgentDetailView(QWidget):
             worker = SystemdWorker("restart", self.agent_name)
             worker.signals.finished.connect(self._on_save_restart_finished)
             worker.signals.error.connect(self._on_save_restart_error)
+            worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
 
         except Exception as e:

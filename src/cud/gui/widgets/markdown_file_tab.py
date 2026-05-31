@@ -40,4 +40,5 @@ class MarkdownFileTab(QWidget):
     def save_file(self, file_path: Path) -> None:
         """Write current text content to disk."""
         text = self.editor.toPlainText()
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(text, encoding="utf-8")

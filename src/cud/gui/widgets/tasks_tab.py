@@ -390,7 +390,9 @@ class TasksTab(QWidget):
         entry["enabled"] = self.chk_enabled.isChecked()
         entry["prompt"] = self.input_prompt.toPlainText()
 
+        saved_row = self._selected_index
         self._refresh_table()
+        self.table.selectRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Task '{name}' updated in memory.")
 
     @staticmethod

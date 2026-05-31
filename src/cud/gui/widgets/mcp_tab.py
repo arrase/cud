@@ -217,7 +217,10 @@ class MCPTab(QWidget):
 
         # Row name is first item
         name = selected_items[0].text()
-        server_data = self.current_config.servers[name]
+        server_data = self.current_config.servers.get(name)
+        if server_data is None:
+            self.clear_form()
+            return
 
         self.selected_server_name = name
         self.input_name.setText(name)
@@ -332,6 +335,9 @@ class MCPTab(QWidget):
             # Delete old entry
             if self.selected_server_name in self.current_config.servers:
                 del self.current_config.servers[self.selected_server_name]
+        elif not self.selected_server_name and name in self.current_config.servers:
+            QMessageBox.critical(self, "Name Error", f"Name '{name}' is already in use.")
+            return
 
         self.current_config.servers[name] = server_data
         self.selected_server_name = name

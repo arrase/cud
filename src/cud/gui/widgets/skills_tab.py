@@ -313,7 +313,9 @@ class SkillsTab(QWidget):
         metadata["description"] = entry["description"]
         entry["metadata"] = metadata
 
+        saved_row = self._selected_index
         self._refresh_table()
+        self.table.selectRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Skill '{name}' updated in memory.")
 
     def _on_open_folder_clicked(self) -> None:

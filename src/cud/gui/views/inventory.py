@@ -111,6 +111,7 @@ class InventoryView(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._active_workers: set[SystemdWorker] = set()
 
         # Main Layout
         self.main_layout = QVBoxLayout(self)
@@ -154,6 +155,7 @@ class InventoryView(QWidget):
 
     def reload_agents(self) -> None:
         """Scan ~/.cud/agents/ for folders and retrieve status asynchronously."""
+        self._active_workers.clear()
         self.model.clear()
         agents = list_agents()
 
@@ -172,10 +174,14 @@ class InventoryView(QWidget):
 
             # Async Status Query via QThreadPool
             worker = SystemdWorker("status", agent_name)
-            worker.signals.status_checked.connect(self.on_status_checked)
+            worker.signals.status_checked.connect(self._on_status_checked)
+            worker.signals.error.connect(self._on_status_error)
+            worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
 
-    def on_status_checked(self, service_name: str, is_active: bool, status_text: str) -> None:
+    def _on_status_checked(self, service_name: str, is_active: bool, status_text: str) -> None:
         agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
 
         for row in range(self.model.rowCount()):
@@ -185,8 +191,15 @@ class InventoryView(QWidget):
                 if "failed" in status_text or "error" in status_text:
                     status = "failed"
                 item.setData(status, Qt.ItemDataRole.UserRole + 2)
-                idx = self.model.index(row, 0)
-                self.model.dataChanged.emit(idx, idx)
+                break
+
+    def _on_status_error(self, action: str, service_name: str, error_message: str) -> None:
+        agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
+
+        for row in range(self.model.rowCount()):
+            item = self.model.item(row)
+            if item and item.text() == agent_name:
+                item.setData("inactive", Qt.ItemDataRole.UserRole + 2)
                 break
 
     def on_create_agent_clicked(self) -> None:
