@@ -32,6 +32,12 @@ dependencies = [
 cud = "cud.cli:main"
 cud-gui = "cud.gui:main"
 
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/cud"]
 
@@ -43,5 +49,15 @@ include = [
 ]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["cud"]
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+
 

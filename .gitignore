@@ -4,6 +4,15 @@
 **/.venv
 **/.obsidian
 **/design
-**/tests
 **/conductor
 site/
+
+# Test files and coverage
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# SonarQube
+.scannerwork/
