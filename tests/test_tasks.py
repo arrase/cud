@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
+from unittest.mock import patch
 
+import pydantic.root_model
 import pytest
 
 from cud.config.paths import agent_home
@@ -10,6 +12,7 @@ from cud.tools.tasks import (
     _int_or_none,
     cmd_task_list,
     discover_tasks,
+    register_task_commands,
 )
 
 
@@ -110,3 +113,21 @@ def test_cmd_task_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     )
 
     assert cmd_task_list(args) == 0
+
+
+def test_discover_tasks_exception(tmp_path: Path) -> None:
+    task_dir = tmp_path / "broken"
+    task_dir.mkdir()
+    (task_dir / "TASK.md").write_text("invalid", encoding="utf-8")
+
+    with patch("cud.tools.tasks._parse_task_file", side_effect=RuntimeError("parse error")):
+        assert discover_tasks(tmp_path) == []
+
+
+def test_register_task_commands() -> None:
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers()
+    register_task_commands(sub)
+
+    args = parser.parse_args(["task", "list", "my-agent"])
+    assert args.agent == "my-agent"

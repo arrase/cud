@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QPushButton
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +27,13 @@ def monospace_font(size: int = 10) -> QFont:
     font.setStyleHint(QFont.StyleHint.Monospace)
     font.setPointSize(size)
     return font
+
+
+def create_action_button(text: str, style: str, on_click: Callable[[], None]) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setStyleSheet(style)
+    btn.clicked.connect(on_click)
+    return btn
 
 
 # ---------------------------------------------------------------------------

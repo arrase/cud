@@ -56,6 +56,9 @@ pythonpath = ["src"]
 [tool.coverage.run]
 source = ["cud"]
 relative_files = true
+omit = [
+  "src/cud/gui/*",
+]
 
 [tool.coverage.report]
 show_missing = true

@@ -31,6 +31,7 @@ from cud.gui.core.styles import (
     ACTION_BTN_FOLDER,
     ACTION_BTN_UPDATE,
     TABLE_STYLE,
+    create_action_button,
     monospace_font,
 )
 from cud.tools._frontmatter import parse_frontmatter, render_frontmatter
@@ -85,17 +86,9 @@ class SkillsTab(QWidget):
         # Action Buttons
         self.table_actions = QHBoxLayout()
 
-        self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
-        self.btn_add.clicked.connect(self._on_add_clicked)
-
-        self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
-        self.btn_delete.clicked.connect(self._on_delete_clicked)
-
-        self.btn_open_folder = QPushButton("📂 Open Folder")
-        self.btn_open_folder.setStyleSheet(ACTION_BTN_FOLDER)
-        self.btn_open_folder.clicked.connect(self._on_open_folder_clicked)
+        self.btn_add = create_action_button("➕ Add", ACTION_BTN_ADD, self._on_add_clicked)
+        self.btn_delete = create_action_button("❌ Delete", ACTION_BTN_DELETE, self._on_delete_clicked)
+        self.btn_open_folder = create_action_button("📂 Open Folder", ACTION_BTN_FOLDER, self._on_open_folder_clicked)
 
         self.table_actions.addWidget(self.btn_add)
         self.table_actions.addWidget(self.btn_delete)
