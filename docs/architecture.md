@@ -57,6 +57,7 @@ The agent reasoning core is powered by **[DeepAgents](https://docs.langchain.com
 Conversation state and execution history are managed by **LangGraph**:
 - **SQLite Checkpointing**: `AsyncSqliteSaver` persists the full graph state to `~/.cud/agents/<name>/history.db`.
 - **Thread Isolation**: Every interaction (whether from a Discord thread, a TUI session, or a GUI tab) is tagged with a unique `thread_id`. State transitions, tool call outputs, and message histories are strictly isolated per thread.
+- **Episodic Memory Engine**: Powered by `cud.agent.episodic_memory`, SQLite checkpoints and message writes are indexed to support keyword and date search. The engine queries previous session transcripts without loading the active thread, enabling both autonomous LLM recall (`search_past_conversations`) and user interface search.
 - **State Reversion**: State history allows operations such as `undo_last_exchange`, which rolls back state to the previous human message without corrupting database integrity.
 
 ---
@@ -108,4 +109,4 @@ When an `AgentRuntime` starts or reloads, it builds the complete system prompt d
 1. **`AGENT.md` System Prompt**: The core instruction set, persona definitions, constraints, and custom operational directives written in Markdown.
 2. **Long-Term Memory Injection**: The path `/agent/MEMORY.md` is exposed to the agent backend, allowing the agent to dynamically read and update its persistent memory across sessions.
 3. **Skills Integration**: Markdown skill packages located in `/agent/workspace/skills/` are scanned and loaded into the tool environment.
-4. **MCP & Subagent Tools**: Registered Model Context Protocol (MCP) tool schemas and custom subagents are appended to the model's function signature pool.
+4. **Episodic, MCP & Subagent Tools**: The built-in episodic search tool (`search_past_conversations`), registered Model Context Protocol (MCP) tool schemas, and custom subagents are appended to the model's function signature pool.

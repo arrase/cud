@@ -7,6 +7,7 @@ import argparse
 from rich.console import Console
 from rich.table import Table
 
+from cud.agent.episodic_memory import search_past_conversations_in_db
 from cud.config.paths import agent_home, agents_root
 from cud.config.scaffold import create_agent, delete_agent, list_agents
 from cud.config.settings import load_settings, save_settings
@@ -37,6 +38,12 @@ def register_agent_commands(sub: argparse._SubParsersAction) -> None:
     config.add_argument("--allow-traversal", action="store_true", default=None)
     config.add_argument("--no-traversal", action="store_false", dest="allow_traversal")
     config.set_defaults(func=cmd_agent_config)
+    memory = agent_sub.add_parser("memory", help="Inspect or search agent memory")
+    memory.add_argument("name")
+    memory.add_argument("--search", "-s", help="Search episodic conversation history")
+    memory.add_argument("--clear", action="store_true", help="Clear MEMORY.md")
+    memory.add_argument("--view", action="store_true", help="View MEMORY.md (default)")
+    memory.set_defaults(func=cmd_agent_memory)
 
 
 def cmd_agent_create(args: argparse.Namespace) -> int:
@@ -98,3 +105,39 @@ def cmd_agent_config(args: argparse.Namespace) -> int:
     save_settings(directory, settings)
     console.print(f"Updated {directory / 'settings.yaml'}")
     return 0
+
+
+def cmd_agent_memory(args: argparse.Namespace) -> int:
+    directory = agent_home(args.name)
+    if not directory.exists():
+        console.print(f"[red]Agent '{args.name}' not found at {directory}[/red]")
+        return 1
+
+    if args.clear:
+        path = directory / "MEMORY.md"
+        path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
+        console.print(f"[green]Cleared memory for {args.name}[/green]")
+        return 0
+
+    if args.search:
+        db_path = directory / "history.db"
+        results = search_past_conversations_in_db(args.search, db_path=db_path, limit=5)
+        if not results:
+            console.print(f"[yellow]No sessions found matching '{args.search}'.[/yellow]")
+            return 0
+        table = Table(title=f"Episodic Memory Search: '{args.search}'")
+        table.add_column("Session ID", style="bold cyan")
+        table.add_column("Date", style="dim")
+        table.add_column("Score", justify="right")
+        table.add_column("Snippet Preview")
+        for item in results:
+            snippets_text = "\n".join(item["snippets"][:2])
+            table.add_row(item["thread_id"][:8], item["formatted_date"], str(item["score"]), snippets_text)
+        console.print(table)
+        return 0
+
+    path = directory / "MEMORY.md"
+    content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+    console.print(content)
+    return 0
+

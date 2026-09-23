@@ -33,6 +33,7 @@ cud <command> [subcommand] [options]
 - **`cud agent create <name> [--template default]`**: Scaffold a new agent under `~/.cud/agents/<name>/`.
 - **`cud agent list [-v | --verbose]`**: Display installed agents in a formatted ASCII table with path and model details.
 - **`cud agent config <name> [--model MODEL] [--context-window INT] [--temperature FLOAT] [--allow-traversal/--no-traversal]`**: Update `settings.yaml` non-interactively.
+- **`cud agent memory <name> [--view] [--clear] [--search QUERY]`**: Inspect long-term memory (`MEMORY.md`), clear it, or search past episodic conversation sessions in `history.db`.
 - **`cud agent delete <name> --yes`**: Stop active systemd services, remove unit files, and delete the agent directory.
 
 #### Gateway & Services (`cud gateway`)
@@ -67,7 +68,10 @@ Launch an interactive terminal REPL using:
 cud tui <agent> [--thread-id THREAD_ID]
 ```
 
-Built using **Rich** and **prompt_toolkit**, the TUI provides a rich console chat experience with syntax-highlighted Markdown rendering, tool execution feedback, and session thread persistence.
+Built using **Rich** and **prompt_toolkit**, the TUI provides a rich console chat experience with syntax-highlighted Markdown rendering, tool execution feedback, session thread persistence, and prompt history navigation.
+
+- **Prompt History Navigation**: Previous user prompts across sessions are dynamically indexed from `history.db`. Press the `↑` (Up) and `↓` (Down) arrow keys to cycle through your previous prompts.
+- **Autocompletion**: Tab autocompletion is available for slash commands and subcommands.
 
 ### Built-in TUI Slash Commands
 
@@ -75,7 +79,7 @@ Built using **Rich** and **prompt_toolkit**, the TUI provides a rich console cha
 - `/clear` — Clear the current terminal screen buffer.
 - `/undo` — Revert the last user message and assistant tool exchange from thread state.
 - `/reload` — Hot-reload system prompt (`AGENT.md`), settings, and MCP tools without restarting TUI.
-- `/memory` — Inspect current long-term memory contents (`MEMORY.md`).
+- `/memory` — Inspect (`/memory view`), clear (`/memory clear`), or search past episodic sessions (`/memory search <query>`).
 - `/quit` or `/exit` — Exit the TUI session cleanly.
 
 ---

@@ -69,6 +69,7 @@ When the Discord gateway starts up, it automatically syncs application slash com
 | `/reload` | None | Hot-reload agent configuration, system prompt (`AGENT.md`), skills, and scheduled tasks without restarting the gateway daemon. |
 | `/memory view` | None | View long-term persistent agent memory (`/agent/MEMORY.md`). |
 | `/memory clear` | None | Clear persistent agent long-term memory and reset `MEMORY.md`. |
+| `/memory search` | `query` | Search past episodic conversation sessions and extract relevant excerpts. |
 
 ---
 

@@ -79,14 +79,14 @@ cud gateway start researcher
 
 ### 5. Local Terminal Interface (TUI)
 
-You can also interact with your agent locally through a rich terminal interface.
+You can also interact with your agent locally through a rich terminal interface with persistent prompt history navigation (use `↑`/`↓` arrow keys to cycle through previous prompts across sessions).
 
 ```bash
 # Start the local chat REPL
 cud tui researcher
 ```
 
-Inside the TUI, type `/help` to see available commands, or `/quit` to exit.
+Inside the TUI, type `/help` to see available commands (such as `/memory search <query>`), or `/quit` to exit.
 
 ### 6. Desktop Graphical User Interface (GUI)
 
@@ -112,6 +112,7 @@ When interacting with your agent via the Discord Gateway, you can use the follow
 - `/reload`: Reload tools and the system prompt (`AGENT.md`) for this agent.
 - `/memory view`: View the contents of the agent's long-term `MEMORY.md`.
 - `/memory clear`: Clear the agent's long-term `MEMORY.md`.
+- `/memory search <query>`: Search past conversation sessions and episodic memory by keywords, topics, or dates.
 
 ---
 
@@ -121,8 +122,8 @@ When interacting with your agent via the Discord Gateway, you can use the follow
 Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire "soul":
 - ⚙️ `settings.yaml`: Model parameters and tool configurations.
 - 🎭 `AGENT.md`: The system prompt—defining its persona and rules.
-- 📝 `MEMORY.md`: Long-term memory that the agent can read and update.
-- 💾 `history.db`: A SQLite-backed checkpointer for conversation state.
+- 📝 `MEMORY.md`: Long-term declarative memory that the agent can read and update.
+- 💾 `history.db`: A SQLite-backed checkpointer for conversation state and autonomous episodic recall.
 - 🔌 `mcp.json`: MCP server configurations.
 - 💻 `workspace/`: The dedicated directory where the agent runs commands and edits files.
 - 🧰 `workspace/skills/`: A directory for custom Markdown-defined abilities.
@@ -130,6 +131,14 @@ Every agent lives in `~/.cud/agents/<name>/`. This directory contains its entire
 ![General Configuration](screenshots/general.png)
 ![Agent Instructions](screenshots/instructions.png)
 ![Memory Management](screenshots/menory.png)
+
+### 🧠 Dual Memory & Autonomous Recall
+Cud equips agents with two distinct, complementary memory tiers:
+1. **Declarative Memory (`MEMORY.md`)**: The agent's persistent long-term notes on user preferences, deployment paths, architectural rules, and project guidelines. Exposed via virtual filesystem at `/agent/MEMORY.md` and manageable via `cud agent memory <name>`, `/memory view`, and `/memory clear`.
+2. **Episodic Conversation Memory (`history.db`)**:
+   - **Autonomous Recall (`search_past_conversations`)**: When you ask a question referencing past work (e.g. *"What command did we use yesterday to migrate the database?"*), the agent automatically searches previous conversation sessions and retrieves the exact context and code snippets.
+   - **Interactive User Search**: Search past sessions directly anytime via CLI (`cud agent memory <name> --search "docker"`), TUI (`/memory search <query>`), or Discord (`/memory search <query>`).
+   - **Prompt History Navigation**: Previous user prompts across sessions are indexed in the TUI, allowing seamless `↑` / `↓` arrow key history cycling.
 
 ### 🪄 Skills (`SKILL.md`)
 Skills are portable sets of instructions and tools. Just drop a folder with a `SKILL.md` into an agent's `workspace/skills/` directory, and it instantly gains those capabilities.

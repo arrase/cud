@@ -279,6 +279,26 @@ async def test_cmd_memory_clear(agent_dir: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_cmd_memory_search(agent_dir: Path) -> None:
+    gw = DiscordGateway("discord-agent")
+    interaction = MagicMock(spec=["channel", "response"])
+    interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
+    interaction.response = MagicMock(spec=["send_message"])
+    interaction.response.send_message = AsyncMock()
+
+    mock_rt = MagicMock()
+    mock_rt.search_past_conversations.return_value = []
+    gw.sessions["discord:dm:123"] = mock_rt
+
+    await gw.cmd_memory_search(interaction, "docker")
+    mock_rt.search_past_conversations.assert_called_once_with("docker")
+    assert interaction.response.send_message.await_count == 1
+    args, kwargs = interaction.response.send_message.call_args
+    assert "No relevant past conversations found" in args[0]
+    assert kwargs.get("ephemeral") is True
+
+
+@pytest.mark.anyio
 async def test_run_missing_token(agent_dir: Path) -> None:
     gw = DiscordGateway("discord-agent")
     gw.settings.gateway.token = ""

@@ -116,6 +116,8 @@ You are an autonomous AI software engineer and system administrator assistant.
 - **LangGraph Checkpointer**: Used by `AsyncSqliteSaver` to record full graph checkpoints after every interaction turn.
 - **Session Continuity**: Allows resuming conversations seamlessly after restarting services or rebooting the host machine.
 - **Thread Scoping**: Stores state indexed by `thread_id`, ensuring isolated multi-user and multi-channel conversations.
+- **Episodic Recall**: Powered by `cud.agent.episodic_memory`, enabling autonomous memory recall via the `search_past_conversations` agent tool as well as interactive search across past chat transcripts.
+- **Search & Management Commands**: Search episodic history anytime via CLI (`cud agent memory <name> --search <query>`), TUI (`/memory search <query>`), or Discord (`/memory search <query>`). Prompt history is also dynamically indexed for arrow-key navigation in the TUI.
 
 ---
 

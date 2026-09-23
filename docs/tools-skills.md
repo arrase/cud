@@ -27,6 +27,12 @@ To maintain high reasoning accuracy over extended chat threads without exceeding
 * **Function**: Summarizes prior interaction exchanges, distilling conversation history into core facts, goals, and results.
 * **Triggering**: The tool can be invoked explicitly by the LLM when context bounds fill, or automatically executed by summarization middleware.
 
+### 4. Episodic Memory Recall Tool (`search_past_conversations`)
+Agents are automatically equipped with an episodic memory search tool powered by `cud.agent.episodic_memory`.
+* **Function**: Searches past conversation sessions in SQLite (`history.db`) matching user-specified keywords, topics, or dates (e.g., `'yesterday'`, `'auth'`, `'database migration'`).
+* **Session Excerpts**: Returns timestamped excerpts and snippet previews from prior conversations while strictly excluding the active conversation thread.
+* **Autonomous Recall**: When users ask questions referencing earlier tasks or previously solved errors, the LLM autonomously triggers this tool to retrieve the exact solution without requiring manual log searching.
+
 ---
 
 ## Portable SKILLs

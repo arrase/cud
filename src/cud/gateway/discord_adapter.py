@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from cud.agent.episodic_memory import format_past_conversations_context
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings
@@ -126,6 +127,13 @@ class DiscordGateway:
         await self._reload_sessions()
         await interaction.response.send_message(result, ephemeral=True)
 
+    async def cmd_memory_search(self, interaction: discord.Interaction, query: str) -> None:
+        thread_id = self._get_thread_id(interaction.channel)
+        runtime = self.session(thread_id)
+        results = await asyncio.to_thread(runtime.search_past_conversations, query)
+        content = format_past_conversations_context(results)
+        await interaction.response.send_message(content[:DISCORD_MAX_LENGTH], ephemeral=True)
+
     # -- Bot lifecycle -------------------------------------------------------
 
     async def run(self) -> None:
@@ -179,6 +187,11 @@ class DiscordGateway:
         @memory_group.command(name="clear", description="Clear MEMORY.md.")
         async def slash_memory_clear(interaction: discord.Interaction) -> None:
             await gw.cmd_memory_clear(interaction)
+
+        @memory_group.command(name="search", description="Search past episodic conversations.")
+        @app_commands.describe(query="Keywords or topics to search for")
+        async def slash_memory_search(interaction: discord.Interaction, query: str) -> None:
+            await gw.cmd_memory_search(interaction, query)
 
         bot.tree.add_command(memory_group)
 

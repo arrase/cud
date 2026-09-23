@@ -61,6 +61,8 @@ async def test_runtime_reload_and_build_graph(agent_dir: Path) -> None:
         kwargs = mock_create.call_args.kwargs
         assert "subagents" in kwargs
         assert len(kwargs["subagents"]) == 1
+        assert "tools" in kwargs
+        assert any(t.name == "search_past_conversations" for t in kwargs["tools"])
 
         # AGENT.md absent branch
         (agent_dir / "AGENT.md").unlink()
@@ -207,3 +209,10 @@ async def test_run_async_sync_with_running_loop() -> None:
 
     result = _run_async_sync(sample())
     assert result == "from thread"
+
+
+def test_runtime_episodic_search_and_prompts(agent_dir: Path) -> None:
+    runtime = AgentRuntime(agent_dir=agent_dir)
+    assert runtime.load_past_prompts() == []
+    assert runtime.search_past_conversations("anything") == []
+
