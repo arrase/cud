@@ -94,17 +94,17 @@ class AgentRuntime:
             run_async=_run_async_sync,
         )
 
-        kwargs: dict[str, Any] = dict(
-            model=model,
-            tools=mcp_tools,
-            system_prompt=self.prompt,
-            backend=backend,
-            memory=["/agent/MEMORY.md"],
-            skills=["/agent/workspace/skills/"],
-            checkpointer=await self._sqlite_checkpointer(),
-            middleware=[create_summarization_tool_middleware(model, backend)],
-            name=f"cud-{self.agent_dir.name}",
-        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "tools": mcp_tools,
+            "system_prompt": self.prompt,
+            "backend": backend,
+            "memory": ["/agent/MEMORY.md"],
+            "skills": ["/agent/workspace/skills/"],
+            "checkpointer": await self._sqlite_checkpointer(),
+            "middleware": [create_summarization_tool_middleware(model, backend)],
+            "name": f"cud-{self.agent_dir.name}",
+        }
         if subagents:
             kwargs["subagents"] = subagents
 
@@ -119,6 +119,7 @@ class AgentRuntime:
         thread = thread_id or self.thread_id
         if self.graph is None:
             await self.reload()
+        assert self.graph is not None
         config = {"configurable": {"thread_id": thread}}
         raw = await self.graph.ainvoke({"messages": [{"role": "user", "content": message}]}, config)
         return _response_from_raw(raw)
@@ -126,6 +127,7 @@ class AgentRuntime:
     async def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
         if self.graph is None:
             await self.reload()
+        assert self.graph is not None
         thread = thread_id or self.thread_id
         config = {"configurable": {"thread_id": thread}}
         state = await self.graph.aget_state(config)
@@ -135,12 +137,12 @@ class AgentRuntime:
         await self.graph.aupdate_state(config, {"messages": _drop_last_exchange(messages)})
         return "Last exchange removed."
 
-    async def new_session(self) -> str:
+    def new_session(self) -> str:
         """Start a fresh session by switching to a new unique thread_id."""
         self.thread_id = uuid4().hex
         return f"New session started (thread: {self.thread_id})."
 
-    async def view_memory(self) -> str:
+    def view_memory(self) -> str:
         path = self.agent_dir / "MEMORY.md"
         return path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
 

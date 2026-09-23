@@ -94,25 +94,25 @@ def cmd_task_list(args: argparse.Namespace) -> int:
     tasks = discover_tasks(tasks_dir)
     if not tasks:
         console.print(f"No tasks found in {tasks_dir}")
-        return 0
-    table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
-    now = datetime.now(timezone.utc)
-    for task in tasks:
-        if task.channel_id:
-            dest = f"channel:{task.channel_id}"
-        elif task.user_id:
-            dest = f"DM:{task.user_id}"
-        else:
-            dest = "none"
-        next_run = "—"
-        if task.enabled:
-            try:
-                cron = croniter(task.schedule, now)
-                next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
-            except Exception:
-                next_run = "invalid cron"
-        enabled = "✓" if task.enabled else "✗"
-        table.add_row(task.name, task.schedule, dest, enabled, next_run)
-    console.print(table)
+    else:
+        table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
+        now = datetime.now(timezone.utc)
+        for task in tasks:
+            if task.channel_id:
+                dest = f"channel:{task.channel_id}"
+            elif task.user_id:
+                dest = f"DM:{task.user_id}"
+            else:
+                dest = "none"
+            next_run = "—"
+            if task.enabled:
+                try:
+                    cron = croniter(task.schedule, now)
+                    next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
+                except Exception:
+                    next_run = "invalid cron"
+            enabled = "✓" if task.enabled else "✗"
+            table.add_row(task.name, task.schedule, dest, enabled, next_run)
+        console.print(table)
     return 0
 

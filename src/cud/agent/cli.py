@@ -49,19 +49,19 @@ def cmd_agent_list(args: argparse.Namespace) -> int:
     agents = list_agents()
     if not agents:
         console.print(f"No agents found under {agents_root()}")
-        return 0
-    columns = ("Name", "Path", "Model") if args.verbose else ("Name", "Path")
-    table = Table(*columns)
-    for path in agents:
-        if args.verbose:
-            try:
-                model = load_settings(path).model.name
-            except (FileNotFoundError, ValueError):
-                model = "invalid settings"
-            table.add_row(path.name, str(path), model)
-        else:
-            table.add_row(path.name, str(path))
-    console.print(table)
+    else:
+        columns = ("Name", "Path", "Model") if args.verbose else ("Name", "Path")
+        table = Table(*columns)
+        for path in agents:
+            if args.verbose:
+                try:
+                    model = load_settings(path).model.name
+                except (FileNotFoundError, ValueError):
+                    model = "invalid settings"
+                table.add_row(path.name, str(path), model)
+            else:
+                table.add_row(path.name, str(path))
+        console.print(table)
     return 0
 
 

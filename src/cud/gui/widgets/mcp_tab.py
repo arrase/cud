@@ -29,6 +29,16 @@ from cud.gui.core.styles import ACTION_BTN_ADD, ACTION_BTN_DELETE, ACTION_BTN_UP
 from cud.tools.mcp import MCPConfig, load_mcp_config, save_mcp_config
 
 
+def _parse_env_text(text: str) -> dict[str, str]:
+    env_dict: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if line and "=" in line:
+            k, v = line.split("=", 1)
+            env_dict[k.strip()] = v.strip()
+    return env_dict
+
+
 class MCPTab(QWidget):
     """View to register, configure, and inspect MCP servers and allowed tools."""
 
@@ -285,6 +295,38 @@ class MCPTab(QWidget):
                 del self.current_config.servers[name]
             self.refresh_table()
 
+    def _build_server_data(self, transport: str, cmd_or_url: str) -> dict[str, Any] | None:
+        server_data: dict[str, Any] = {"transport": transport}
+        if transport != "stdio":
+            server_data["url"] = cmd_or_url
+            return server_data
+
+        server_data["command"] = cmd_or_url
+        args_str = self.input_args.text().strip()
+        if args_str:
+            try:
+                server_data["args"] = shlex.split(args_str)
+            except Exception as e:
+                QMessageBox.critical(self, "Arguments Error", f"Error parsing arguments: {e}")
+                return None
+        else:
+            server_data["args"] = []
+
+        env_dict = _parse_env_text(self.input_env.toPlainText())
+        if env_dict:
+            server_data["env"] = env_dict
+        return server_data
+
+    def _apply_server_rename(self, new_name: str) -> bool:
+        if self.selected_server_name == new_name:
+            return True
+        if new_name in self.current_config.servers:
+            QMessageBox.critical(self, "Name Error", f"Name '{new_name}' is already in use.")
+            return False
+        if self.selected_server_name in self.current_config.servers:
+            del self.current_config.servers[self.selected_server_name]
+        return True
+
     def on_update_clicked(self) -> None:
         """Update active server config with values in input fields."""
         name = self.input_name.text().strip()
@@ -292,51 +334,17 @@ class MCPTab(QWidget):
             QMessageBox.critical(self, "Data Error", "Server name cannot be empty.")
             return
 
-        transport = self.input_transport.currentText()
         cmd_or_url = self.input_cmd_url.text().strip()
-
         if not cmd_or_url:
             QMessageBox.critical(self, "Data Error", "Destination Command or URL is required.")
             return
 
-        server_data: dict[str, Any] = {"transport": transport}
+        transport = self.input_transport.currentText()
+        server_data = self._build_server_data(transport, cmd_or_url)
+        if server_data is None:
+            return
 
-        if transport == "stdio":
-            server_data["command"] = cmd_or_url
-
-            # Parse arguments cleanly with shlex
-            args_str = self.input_args.text().strip()
-            try:
-                server_data["args"] = shlex.split(args_str) if args_str else []
-            except Exception as e:
-                QMessageBox.critical(self, "Arguments Error", f"Error parsing arguments: {e}")
-                return
-
-            # Parse environment variables
-            env_text = self.input_env.toPlainText().strip()
-            env_dict = {}
-            if env_text:
-                for line in env_text.splitlines():
-                    line = line.strip()
-                    if not line or "=" not in line:
-                        continue
-                    k, v = line.split("=", 1)
-                    env_dict[k.strip()] = v.strip()
-            if env_dict:
-                server_data["env"] = env_dict
-        else:
-            server_data["url"] = cmd_or_url
-
-        # Check if the name has changed
-        if self.selected_server_name and self.selected_server_name != name:
-            if name in self.current_config.servers:
-                QMessageBox.critical(self, "Name Error", f"Name '{name}' is already in use.")
-                return
-            # Delete old entry
-            if self.selected_server_name in self.current_config.servers:
-                del self.current_config.servers[self.selected_server_name]
-        elif not self.selected_server_name and name in self.current_config.servers:
-            QMessageBox.critical(self, "Name Error", f"Name '{name}' is already in use.")
+        if not self._apply_server_rename(name):
             return
 
         self.current_config.servers[name] = server_data
