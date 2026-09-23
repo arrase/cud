@@ -30,6 +30,9 @@ class TaskCard:
     prompt: str
 
 
+PeriodicTask = TaskCard
+
+
 def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
     """Scan ``tasks_dir`` for ``*/TASK.md`` files and return parsed cards."""
     if not tasks_dir.exists():
@@ -88,6 +91,24 @@ def register_task_commands(sub: argparse._SubParsersAction) -> None:
     task_list.set_defaults(func=cmd_task_list)
 
 
+def _task_destination(task: PeriodicTask) -> str:
+    if task.channel_id:
+        return f"channel:{task.channel_id}"
+    if task.user_id:
+        return f"DM:{task.user_id}"
+    return "none"
+
+
+def _task_next_run(task: PeriodicTask, now: datetime) -> str:
+    if not task.enabled:
+        return "—"
+    try:
+        cron = croniter(task.schedule, now)
+        return cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
+    except Exception:
+        return "invalid cron"
+
+
 def cmd_task_list(args: argparse.Namespace) -> int:
     directory = agent_home(args.agent)
     tasks_dir = directory / "workspace" / "tasks"
@@ -98,21 +119,13 @@ def cmd_task_list(args: argparse.Namespace) -> int:
         table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
         now = datetime.now(timezone.utc)
         for task in tasks:
-            if task.channel_id:
-                dest = f"channel:{task.channel_id}"
-            elif task.user_id:
-                dest = f"DM:{task.user_id}"
-            else:
-                dest = "none"
-            next_run = "—"
-            if task.enabled:
-                try:
-                    cron = croniter(task.schedule, now)
-                    next_run = cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
-                except Exception:
-                    next_run = "invalid cron"
-            enabled = "✓" if task.enabled else "✗"
-            table.add_row(task.name, task.schedule, dest, enabled, next_run)
+            table.add_row(
+                task.name,
+                task.schedule,
+                _task_destination(task),
+                "✓" if task.enabled else "✗",
+                _task_next_run(task, now),
+            )
         console.print(table)
     return 0
 

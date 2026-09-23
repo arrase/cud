@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+import pydantic.root_model
 import pytest
 
 from cud.agent.runtime import (
@@ -83,6 +84,13 @@ def test_drop_last_exchange_preserves_system() -> None:
     ]
     trimmed = _drop_last_exchange(messages)
     assert trimmed == [{"role": "system", "content": "system prompt"}]
+
+    messages_no_user = [
+        {"role": "system", "content": "system prompt"},
+        {"role": "assistant", "content": "answer only"},
+    ]
+    trimmed_no_user = _drop_last_exchange(messages_no_user)
+    assert trimmed_no_user == [{"role": "system", "content": "system prompt"}]
 
 
 def test_runtime_session_and_memory(
