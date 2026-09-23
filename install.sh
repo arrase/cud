@@ -5,16 +5,16 @@ set -e
 echo "Starting Cud installation..."
 
 # Check if running as root
-if [ "$EUID" -eq 0 ]; then
-  echo "Error: This script must not be run as root (or with sudo)."
-  echo "Cud should be installed as a regular user."
+if [[ "$EUID" -eq 0 ]]; then
+  echo "Error: This script must not be run as root (or with sudo)." >&2
+  echo "Cud should be installed as a regular user." >&2
   exit 1
 fi
 
 # Check for systemd
-if ! command -v systemctl >/dev/null 2>&1 || [ ! -d "/run/systemd/system" ]; then
-  echo "Error: A Linux distribution with systemd is required."
-  echo "Cud relies on systemd to run agents as background services."
+if ! command -v systemctl >/dev/null 2>&1 || [[ ! -d "/run/systemd/system" ]]; then
+  echo "Error: A Linux distribution with systemd is required." >&2
+  echo "Cud relies on systemd to run agents as background services." >&2
   exit 1
 fi
 
@@ -27,10 +27,10 @@ if command -v pipx >/dev/null 2>&1; then
   pipx install --force "$REPO_URL"
 elif command -v uv >/dev/null 2>&1; then
   echo "Detected uv. Installing/updating Cud from GitHub..."
-  uv tool install --force "$REPO_URL"
+  uv tool install --no-build --force "$REPO_URL"
 else
-  echo "Error: Neither 'pipx' nor 'uv' is installed."
-  echo "Please install one of them to proceed."
+  echo "Error: Neither 'pipx' nor 'uv' is installed." >&2
+  echo "Please install one of them to proceed." >&2
   echo ""
   echo "To install pipx (Ubuntu/Debian):"
   echo "  sudo apt update && sudo apt install pipx"
@@ -50,7 +50,7 @@ ICON_PATH="$HOME/.local/share/icons/cud.png"
 DESKTOP_FILE="$HOME/.local/share/applications/cud.desktop"
 
 echo "Downloading icon..."
-curl -fsSL "$ICON_URL" -o "$ICON_PATH" || echo "Warning: Failed to download icon."
+curl --proto "=https" -fsSL "$ICON_URL" -o "$ICON_PATH" || echo "Warning: Failed to download icon." >&2
 
 echo "Creating .desktop file..."
 cat > "$DESKTOP_FILE" << EOF

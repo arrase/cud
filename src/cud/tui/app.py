@@ -24,13 +24,24 @@ from cud.config.settings import load_settings
 # Theme & constants
 # ---------------------------------------------------------------------------
 
+_STYLE_DIM = "cud.dim"
+_STYLE_SUCCESS = "cud.success"
+_STYLE_WARNING = "cud.warning"
+_STYLE_ERROR = "cud.error"
+_COLOR_DIM_CYAN = "dim cyan"
+
+_CMD_HELP = "/help"
+_CMD_QUIT = "/quit"
+_CMD_UNDO = "/undo"
+_CMD_RELOAD = "/reload"
+
 _THEME = Theme({
     "cud.accent": "bold cyan",
-    "cud.dim": "dim",
-    "cud.success": "green",
-    "cud.warning": "yellow",
-    "cud.error": "bold red",
-    "cud.agent_border": "dim cyan",
+    _STYLE_DIM: "dim",
+    _STYLE_SUCCESS: "green",
+    _STYLE_WARNING: "yellow",
+    _STYLE_ERROR: "bold red",
+    "cud.agent_border": _COLOR_DIM_CYAN,
 })
 
 
@@ -52,9 +63,9 @@ def _welcome_banner(agent_name: str, model_name: str, thread_id: str, console: C
     info_lines.append("\n  thread  ", style="dim")
     info_lines.append(thread_id, style="bright_white")
     info_lines.append("\n  ", style="dim")
-    info_lines.append("/help", style="cyan")
+    info_lines.append(_CMD_HELP, style="cyan")
     info_lines.append(" commands  ", style="dim")
-    info_lines.append("/quit", style="cyan")
+    info_lines.append(_CMD_QUIT, style="cyan")
     info_lines.append(" exit", style="dim")
 
     panel = Panel(
@@ -72,7 +83,7 @@ def _agent_response(content: str, agent_name: str, elapsed: float, console: Cons
     ts = datetime.now().strftime("%H:%M:%S")
 
     console.print(Text.assemble(
-        ("╭ ", "dim cyan"),
+        ("╭ ", _COLOR_DIM_CYAN),
         (agent_name, "bold cyan"),
         (f"  {ts}", "dim"),
         (f"  {elapsed:.1f}s", "dim"),
@@ -99,11 +110,11 @@ def _help_panel(console: Console) -> None:
     commands = [
         ("/new", "Start a new session"),
         ("/model <name>", "Switch model"),
-        ("/undo", "Remove last exchange"),
-        ("/reload", "Reload tools & prompt"),
+        (_CMD_UNDO, "Remove last exchange"),
+        (_CMD_RELOAD, "Reload tools & prompt"),
         ("/memory view", "View agent memory"),
         ("/memory clear", "Clear agent memory"),
-        ("/quit", "Exit"),
+        (_CMD_QUIT, "Exit"),
     ]
     lines = Text()
     for cmd, desc in commands:
@@ -135,12 +146,12 @@ def _build_prompt_message() -> HTML:
 _COMMANDS_META = {
     "/new": "Start a new session",
     "/model ": "Switch model",
-    "/undo": "Remove last exchange",
-    "/reload": "Reload tools & prompt",
+    _CMD_UNDO: "Remove last exchange",
+    _CMD_RELOAD: "Reload tools & prompt",
     "/memory view": "View agent memory",
     "/memory clear": "Clear agent memory",
-    "/help": "Show commands",
-    "/quit": "Exit",
+    _CMD_HELP: "Show commands",
+    _CMD_QUIT: "Exit",
     "/exit": "Exit",
 }
 
@@ -163,26 +174,26 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
     command = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
 
-    if command in ("/quit", "/exit"):
-        _system_message("Goodbye!", "cud.dim", console)
+    if command in (_CMD_QUIT, "/exit"):
+        _system_message("Goodbye!", _STYLE_DIM, console)
         return True
     elif command == "/new":
-        result = await runtime.new_session()
-        _system_message(result, "cud.success", console)
-    elif command == "/undo":
+        result = runtime.new_session()
+        _system_message(result, _STYLE_SUCCESS, console)
+    elif command == _CMD_UNDO:
         result = await runtime.undo_last_exchange()
-        _system_message(result, "cud.success", console)
-    elif command == "/reload":
+        _system_message(result, _STYLE_SUCCESS, console)
+    elif command == _CMD_RELOAD:
         await runtime.reload()
-        _system_message("Agent tools and prompt reloaded.", "cud.success", console)
+        _system_message("Agent tools and prompt reloaded.", _STYLE_SUCCESS, console)
     elif command == "/memory":
         if args == "view":
-            content = await runtime.view_memory()
+            content = runtime.view_memory()
             panel = Panel(
                 Markdown(content),
                 title="[bold white]memory[/bold white]",
                 title_align="left",
-                border_style="dim cyan",
+                border_style=_COLOR_DIM_CYAN,
                 box=box.ROUNDED,
                 padding=(0, 2),
             )
@@ -190,19 +201,19 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
             console.print()
         elif args == "clear":
             result = await runtime.clear_memory()
-            _system_message(result, "cud.success", console)
+            _system_message(result, _STYLE_SUCCESS, console)
         else:
-            _system_message("Usage: /memory view | /memory clear", "cud.warning", console)
+            _system_message("Usage: /memory view | /memory clear", _STYLE_WARNING, console)
     elif command == "/model":
         if not args:
-            _system_message("Usage: /model <model_name>", "cud.warning", console)
+            _system_message("Usage: /model <model_name>", _STYLE_WARNING, console)
             return False
         result = await runtime.set_model(args)
-        _system_message(result, "cud.success", console)
-    elif command == "/help":
+        _system_message(result, _STYLE_SUCCESS, console)
+    elif command == _CMD_HELP:
         _help_panel(console)
     else:
-        _system_message(f"Unknown command: {command}", "cud.error", console)
+        _system_message(f"Unknown command: {command}", _STYLE_ERROR, console)
     return False
 
 
@@ -217,7 +228,7 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
     agent_dir = agent_home(agent_name)
 
     if not agent_dir.exists():
-        _system_message(f"Agent '{agent_name}' not found.", "cud.error", console)
+        _system_message(f"Agent '{agent_name}' not found.", _STYLE_ERROR, console)
         return 1
 
     settings = load_settings(agent_dir)
@@ -257,9 +268,9 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
 
             except (KeyboardInterrupt, EOFError):
                 console.print()
-                _system_message("Interrupted.", "cud.dim", console)
+                _system_message("Interrupted.", _STYLE_DIM, console)
                 break
             except Exception as e:
-                _system_message(f"Error: {e}", "cud.error", console)
+                _system_message(f"Error: {e}", _STYLE_ERROR, console)
 
     return 0

@@ -17,6 +17,9 @@ from PySide6.QtWidgets import (
 from cud.config.settings import GatewaySettings, ModelSettings, RuntimeSettings, Settings
 
 
+_READONLY_STYLE = "background-color: #252525; color: #888888;"
+
+
 class SettingsTab(QWidget):
     """General agent configuration view covering model parameters and Discord tokens."""
 
@@ -36,7 +39,7 @@ class SettingsTab(QWidget):
 
         self.input_provider = QLineEdit("ollama")
         self.input_provider.setReadOnly(True)
-        self.input_provider.setStyleSheet("background-color: #252525; color: #888888;")
+        self.input_provider.setStyleSheet(_READONLY_STYLE)
 
         self.input_model_name = QLineEdit()
         self.input_model_name.setPlaceholderText("gemma4:e4b")
@@ -78,11 +81,11 @@ class SettingsTab(QWidget):
 
         self.input_gw_provider = QLineEdit("discord")
         self.input_gw_provider.setReadOnly(True)
-        self.input_gw_provider.setStyleSheet("background-color: #252525; color: #888888;")
+        self.input_gw_provider.setStyleSheet(_READONLY_STYLE)
 
         self.input_gw_mode = QLineEdit("bot")
         self.input_gw_mode.setReadOnly(True)
-        self.input_gw_mode.setStyleSheet("background-color: #252525; color: #888888;")
+        self.input_gw_mode.setStyleSheet(_READONLY_STYLE)
 
         # Discord Token field with masked visibility toggle
         token_container = QWidget()

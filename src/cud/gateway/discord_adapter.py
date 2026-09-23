@@ -88,7 +88,7 @@ class DiscordGateway:
     async def cmd_new(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
         runtime = self.session(thread_id)
-        result = await runtime.new_session()
+        result = runtime.new_session()
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
@@ -117,7 +117,7 @@ class DiscordGateway:
 
     async def cmd_memory_view(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        content = await self.session(thread_id).view_memory()
+        content = self.session(thread_id).view_memory()
         await interaction.response.send_message(content[:DISCORD_MAX_LENGTH], ephemeral=True)
 
     async def cmd_memory_clear(self, interaction: discord.Interaction) -> None:

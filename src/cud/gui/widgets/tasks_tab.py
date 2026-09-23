@@ -33,6 +33,39 @@ from cud.tools._frontmatter import render_frontmatter
 from cud.tools.tasks import discover_tasks
 
 
+def _write_task_entry(tasks_dir: Path, entry: dict[str, Any]) -> str:
+    dir_name = entry["dir_name"]
+    task_dir = tasks_dir / dir_name
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata: dict[str, Any] = {
+        "name": entry["name"],
+        "schedule": entry["schedule"],
+        "enabled": entry["enabled"],
+    }
+    if entry.get("description"):
+        metadata["description"] = entry["description"]
+    if entry.get("channel_id") is not None:
+        metadata["channel_id"] = entry["channel_id"]
+    if entry.get("user_id") is not None:
+        metadata["user_id"] = entry["user_id"]
+
+    body = "\n" + entry["prompt"].lstrip("\n")
+    content = render_frontmatter(metadata, body)
+    (task_dir / "TASK.md").write_text(content, encoding="utf-8")
+    return dir_name
+
+
+def _cleanup_deleted_tasks(tasks_dir: Path, written_dirs: set[str]) -> None:
+    if not tasks_dir.exists():
+        return
+    for existing in tasks_dir.iterdir():
+        if not existing.is_dir() or existing.name.startswith(("__", ".")):
+            continue
+        if existing.name not in written_dirs:
+            shutil.rmtree(existing)
+
+
 class TasksTab(QWidget):
     """View to list, create, edit, and delete scheduled tasks with cron expressions."""
 
@@ -174,46 +207,8 @@ class TasksTab(QWidget):
         """Write all in-memory task data back to disk as TASK.md files."""
         tasks_dir = agent_dir / "workspace" / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
-
-        written_dirs: set[str] = set()
-
-        for entry in self._tasks_data:
-            dir_name = entry["dir_name"]
-            task_dir = tasks_dir / dir_name
-            task_dir.mkdir(parents=True, exist_ok=True)
-
-            metadata: dict[str, Any] = {
-                "name": entry["name"],
-                "schedule": entry["schedule"],
-                "enabled": entry["enabled"],
-            }
-            if entry.get("description"):
-                metadata["description"] = entry["description"]
-            if entry.get("channel_id") is not None:
-                metadata["channel_id"] = entry["channel_id"]
-            if entry.get("user_id") is not None:
-                metadata["user_id"] = entry["user_id"]
-
-            # render_frontmatter already appends the body right after the
-            # closing "---", so we prepend a single newline only to ensure
-            # a blank line separating frontmatter from body content.
-            body = entry["prompt"]
-            body = "\n" + body.lstrip("\n")
-
-            content = render_frontmatter(metadata, body)
-            (task_dir / "TASK.md").write_text(content, encoding="utf-8")
-            written_dirs.add(dir_name)
-
-        # Remove task directories that were deleted from memory, but skip
-        # internal directories like __pycache__ or hidden dot-dirs.
-        if tasks_dir.exists():
-            for existing in tasks_dir.iterdir():
-                if not existing.is_dir():
-                    continue
-                if existing.name.startswith(("__", ".")):
-                    continue
-                if existing.name not in written_dirs:
-                    shutil.rmtree(existing)
+        written_dirs = {_write_task_entry(tasks_dir, entry) for entry in self._tasks_data}
+        _cleanup_deleted_tasks(tasks_dir, written_dirs)
 
     def _refresh_table(self) -> None:
         """Regenerate the table from in-memory data."""

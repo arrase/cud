@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n((?:(?!^---)[^\r\n]*\r?\n)*)---[ \t]*\r?\n", re.MULTILINE)
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:

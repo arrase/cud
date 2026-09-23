@@ -129,34 +129,33 @@ def register_mcp_commands(sub: argparse._SubParsersAction) -> None:
     mcp_list.set_defaults(func=cmd_mcp_list)
 
 
+def _build_stdio_server_config(value: str, env_vars: list[str], transport: str) -> dict[str, Any]:
+    parts = shlex.split(value)
+    command = parts[0] if parts else value
+    cmd_args = parts[1:]
+    env_dict: dict[str, str] = {}
+    for env_var in env_vars:
+        k, _, v = env_var.partition("=")
+        env_dict[k] = v
+    server_config: dict[str, Any] = {"command": command, "args": cmd_args, "transport": transport}
+    if env_dict:
+        server_config["env"] = env_dict
+    return server_config
+
+
 def cmd_mcp_add(args: argparse.Namespace) -> int:
     directory = agent_home(args.agent)
     config = load_mcp_config(directory)
     name = args.name or f"server{len(config.servers) + 1}"
     value = args.server_url_or_cmd
 
-    is_url = value.startswith("http://") or value.startswith("https://")
-    transport = args.transport
-    if not transport:
-        transport = "sse" if is_url else "stdio"
+    is_url = value.startswith(("http://", "https://"))
+    transport = args.transport or ("sse" if is_url else "stdio")
 
     if transport in ("sse", "streamable_http"):
         config.servers[name] = {"url": value, "transport": transport}
     else:
-        parts = shlex.split(value)
-        command = parts[0] if parts else value
-        cmd_args = parts[1:]
-        env_dict = {}
-        for env_var in args.env:
-            if "=" in env_var:
-                k, v = env_var.split("=", 1)
-                env_dict[k] = v
-            else:
-                env_dict[env_var] = ""
-        server_config: dict[str, Any] = {"command": command, "args": cmd_args, "transport": transport}
-        if env_dict:
-            server_config["env"] = env_dict
-        config.servers[name] = server_config
+        config.servers[name] = _build_stdio_server_config(value, args.env, transport)
 
     if args.allowed_tool:
         config.allowed_tools = sorted(set(config.allowed_tools + args.allowed_tool))
