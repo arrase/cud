@@ -115,15 +115,17 @@ def cmd_task_list(args: argparse.Namespace) -> int:
     tasks = discover_tasks(tasks_dir)
     if not tasks:
         console.print(f"No tasks found in {tasks_dir}")
-        return 0
-
-    table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
-    now = datetime.now(timezone.utc)
-    for task in tasks:
-        dest = _task_destination(task)
-        next_run = _task_next_run(task, now)
-        enabled = "✓" if task.enabled else "✗"
-        table.add_row(task.name, task.schedule, dest, enabled, next_run)
-    console.print(table)
+    else:
+        table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
+        now = datetime.now(timezone.utc)
+        for task in tasks:
+            table.add_row(
+                task.name,
+                task.schedule,
+                _task_destination(task),
+                "✓" if task.enabled else "✗",
+                _task_next_run(task, now),
+            )
+        console.print(table)
     return 0
 
