@@ -72,6 +72,7 @@ def _init_history_db(path: Path) -> None:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS cud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
+    conn.close()
 
 
 def list_agents() -> list[Path]:
