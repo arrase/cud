@@ -103,6 +103,26 @@ async def test_handle_command_memory() -> None:
     assert await handle_command("/memory clear", runtime, console) is False
     runtime.clear_memory.assert_awaited_once()
 
+    # memory search empty
+    assert await handle_command("/memory search", runtime, console) is False
+
+    # memory search no results
+    runtime.search_past_conversations = MagicMock(return_value=[])
+    assert await handle_command("/memory search docker", runtime, console) is False
+    runtime.search_past_conversations.assert_called_with("docker", limit=5)
+
+    # memory search with results
+    runtime.search_past_conversations = MagicMock(return_value=[{
+        "thread_id": "thread-12345678",
+        "formatted_date": "2026-08-20 10:00 UTC",
+        "score": 3,
+        "snippets": ["[User]: How to dockerize FastAPI?"],
+        "total_messages": 2,
+    }])
+    assert await handle_command("/memory search fastapi", runtime, console) is False
+    assert "thread-1" in output.getvalue()
+    assert "2026-08-20" in output.getvalue()
+
     # memory invalid arg
     assert await handle_command("/memory invalid", runtime, console) is False
 

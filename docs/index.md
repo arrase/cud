@@ -23,7 +23,7 @@
   <div class="feature-card">
     <i class="fa-solid fa-user-shield feature-icon"></i>
     <h3>Local & Private</h3>
-    <p>Powered by Ollama. Your prompts, source code, and long-term agent memories stay 100% on your machine.</p>
+    <p>Powered by Ollama. Your prompts, source code, and dual declarative and episodic agent memories stay 100% on your machine.</p>
   </div>
   <div class="feature-card">
     <i class="fa-solid fa-network-wired feature-icon"></i>
@@ -96,7 +96,7 @@ Navigate through the comprehensive technical documentation for Cud:
   <a class="feature-card" href="agent-workspace.md">
     <i class="fa-solid fa-folder-tree feature-icon"></i>
     <h3>Agent & Workspace</h3>
-    <p>Deep dive into <code>~/.cud/agents/&lt;name&gt;/</code> directory structure, <code>AGENT.md</code>, <code>MEMORY.md</code>, and <code>history.db</code>.</p>
+    <p>Deep dive into <code>~/.cud/agents/&lt;name&gt;/</code> directory structure, <code>AGENT.md</code>, <code>MEMORY.md</code>, and <code>history.db</code> with episodic memory recall.</p>
   </a>
 
   <a class="feature-card" href="interfaces.md">

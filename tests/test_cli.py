@@ -9,6 +9,7 @@ from cud.agent.cli import (
     cmd_agent_create,
     cmd_agent_delete,
     cmd_agent_list,
+    cmd_agent_memory,
     register_agent_commands,
 )
 from cud.cli import build_parser, cmd_completion, main
@@ -152,6 +153,35 @@ def test_tui_cli() -> None:
         assert cmd_tui(args) == 0
 
 
+def test_agent_cli_memory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    # Nonexistent agent
+    assert cmd_agent_memory(argparse.Namespace(name="nonexistent", clear=False, search=None, view=True)) == 1
+
+    create_args = argparse.Namespace(name="mem-agent", template="default")
+    cmd_agent_create(create_args)
+
+    # View memory
+    assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=False, search=None, view=True)) == 0
+
+    # Clear memory
+    assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=True, search=None, view=False)) == 0
+
+    # Search with no results
+    assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=False, search="docker", view=False)) == 0
+
+    # Search with results
+    sample_res = [{
+        "thread_id": "thread-12345678",
+        "formatted_date": "2026-08-20 10:00 UTC",
+        "score": 2,
+        "snippets": ["[User]: How to dockerize FastAPI?"],
+        "total_messages": 2,
+    }]
+    with patch("cud.agent.cli.search_past_conversations_in_db", return_value=sample_res):
+        assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=False, search="fastapi", view=False)) == 0
+
+
 def test_register_commands() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
@@ -161,6 +191,8 @@ def test_register_commands() -> None:
 
     args_agent = parser.parse_args(["agent", "list"])
     assert hasattr(args_agent, "func")
+    args_mem = parser.parse_args(["agent", "memory", "test-agent", "--search", "docker"])
+    assert args_mem.search == "docker"
     args_gw = parser.parse_args(["gateway", "run", "gw-agent"])
     assert hasattr(args_gw, "func")
     args_tui = parser.parse_args(["tui", "agent-x"])

@@ -9,13 +9,16 @@ from uuid import uuid4
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.formatted_text import HTML
+from prompt_toolkit.history import InMemoryHistory
 from rich import box
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
+from cud.agent.episodic_memory import load_past_user_prompts
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings
@@ -29,6 +32,7 @@ _STYLE_SUCCESS = "cud.success"
 _STYLE_WARNING = "cud.warning"
 _STYLE_ERROR = "cud.error"
 _COLOR_DIM_CYAN = "dim cyan"
+_COLOR_BOLD_CYAN = "bold cyan"
 
 _CMD_HELP = "/help"
 _CMD_QUIT = "/quit"
@@ -36,7 +40,7 @@ _CMD_UNDO = "/undo"
 _CMD_RELOAD = "/reload"
 
 _THEME = Theme({
-    "cud.accent": "bold cyan",
+    "cud.accent": _COLOR_BOLD_CYAN,
     _STYLE_DIM: "dim",
     _STYLE_SUCCESS: "green",
     _STYLE_WARNING: "yellow",
@@ -84,7 +88,7 @@ def _agent_response(content: str, agent_name: str, elapsed: float, console: Cons
 
     console.print(Text.assemble(
         ("╭ ", _COLOR_DIM_CYAN),
-        (agent_name, "bold cyan"),
+        (agent_name, _COLOR_BOLD_CYAN),
         (f"  {ts}", "dim"),
         (f"  {elapsed:.1f}s", "dim"),
     ))
@@ -114,11 +118,12 @@ def _help_panel(console: Console) -> None:
         (_CMD_RELOAD, "Reload tools & prompt"),
         ("/memory view", "View agent memory"),
         ("/memory clear", "Clear agent memory"),
+        ("/memory search <q>", "Search past sessions"),
         (_CMD_QUIT, "Exit"),
     ]
     lines = Text()
     for cmd, desc in commands:
-        lines.append(f"  {cmd:<16}", style="cyan")
+        lines.append(f"  {cmd:<18}", style="cyan")
         lines.append(f" {desc}\n", style="dim")
 
     panel = Panel(
@@ -150,6 +155,7 @@ _COMMANDS_META = {
     _CMD_RELOAD: "Reload tools & prompt",
     "/memory view": "View agent memory",
     "/memory clear": "Clear agent memory",
+    "/memory search ": "Search past sessions",
     _CMD_HELP: "Show commands",
     _CMD_QUIT: "Exit",
     "/exit": "Exit",
@@ -166,6 +172,49 @@ _completer = WordCompleter(
 # ---------------------------------------------------------------------------
 # Command handler
 # ---------------------------------------------------------------------------
+
+
+def _handle_memory_search(query: str, runtime: AgentRuntime, console: Console) -> None:
+    if not query:
+        _system_message("Usage: /memory search <query>", _STYLE_WARNING, console)
+        return
+    results = runtime.search_past_conversations(query, limit=5)
+    if not results:
+        _system_message(f"No past conversations found matching '{query}'.", _STYLE_WARNING, console)
+        return
+    table = Table(title=f"Past Conversations: '{query}'", box=box.ROUNDED)
+    table.add_column("Session ID", style=_COLOR_BOLD_CYAN)
+    table.add_column("Date", style="dim")
+    table.add_column("Score", justify="right")
+    table.add_column("Snippet Preview")
+    for item in results:
+        snippets_text = "\n".join(item["snippets"][:2])
+        table.add_row(item["thread_id"][:8], item["formatted_date"], str(item["score"]), snippets_text)
+    console.print(table)
+    console.print()
+
+
+async def _handle_memory_command(args: str, runtime: AgentRuntime, console: Console) -> None:
+    if args == "view":
+        content = runtime.view_memory()
+        panel = Panel(
+            Markdown(content),
+            title="[bold white]memory[/bold white]",
+            title_align="left",
+            border_style=_COLOR_DIM_CYAN,
+            box=box.ROUNDED,
+            padding=(0, 2),
+        )
+        console.print(panel)
+        console.print()
+    elif args == "clear":
+        result = await runtime.clear_memory()
+        _system_message(result, _STYLE_SUCCESS, console)
+    elif args.startswith("search"):
+        query = args.removeprefix("search").strip()
+        _handle_memory_search(query, runtime, console)
+    else:
+        _system_message("Usage: /memory view | /memory clear | /memory search <query>", _STYLE_WARNING, console)
 
 
 async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> bool:
@@ -186,24 +235,8 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
     elif command == _CMD_RELOAD:
         await runtime.reload()
         _system_message("Agent tools and prompt reloaded.", _STYLE_SUCCESS, console)
-    elif command == "/memory":
-        if args == "view":
-            content = runtime.view_memory()
-            panel = Panel(
-                Markdown(content),
-                title="[bold white]memory[/bold white]",
-                title_align="left",
-                border_style=_COLOR_DIM_CYAN,
-                box=box.ROUNDED,
-                padding=(0, 2),
-            )
-            console.print(panel)
-            console.print()
-        elif args == "clear":
-            result = await runtime.clear_memory()
-            _system_message(result, _STYLE_SUCCESS, console)
-        else:
-            _system_message("Usage: /memory view | /memory clear", _STYLE_WARNING, console)
+    elif command in ("/memory", "/history"):
+        await _handle_memory_command(args, runtime, console)
     elif command == "/model":
         if not args:
             _system_message("Usage: /model <model_name>", _STYLE_WARNING, console)
@@ -233,7 +266,10 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
 
     settings = load_settings(agent_dir)
     prompt_message = _build_prompt_message()
-    session: PromptSession[str] = PromptSession(completer=_completer)
+    prompt_history = InMemoryHistory()
+    for prompt_text in load_past_user_prompts(agent_dir / "history.db"):
+        prompt_history.append_string(prompt_text)
+    session: PromptSession[str] = PromptSession(completer=_completer, history=prompt_history)
 
     thread_id = thread_id or uuid4().hex
     _welcome_banner(agent_name, settings.model.name, thread_id, console)

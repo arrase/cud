@@ -17,6 +17,11 @@ from deepagents.middleware.summarization import create_summarization_tool_middle
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from cud.agent.episodic_memory import (
+    create_search_past_conversations_tool,
+    load_past_user_prompts,
+    search_past_conversations_in_db,
+)
 from cud.agent.subagents import build_subagents
 from cud.config.settings import Settings, load_settings, save_settings
 from cud.tools.mcp import load_mcp_tools_managed
@@ -58,6 +63,10 @@ class AgentRuntime:
     def workspace_dir(self) -> Path:
         return self.agent_dir / "workspace"
 
+    @property
+    def history_db_path(self) -> Path:
+        return self.agent_dir / "history.db"
+
     async def reload(self) -> None:
         await self._exit_stack.aclose()
         self._exit_stack = contextlib.AsyncExitStack()
@@ -94,9 +103,14 @@ class AgentRuntime:
             run_async=_run_async_sync,
         )
 
+        memory_tool = create_search_past_conversations_tool(
+            db_path=self.history_db_path,
+            get_thread_id=lambda: self.thread_id,
+        )
+
         kwargs: dict[str, Any] = {
             "model": model,
-            "tools": mcp_tools,
+            "tools": [*mcp_tools, memory_tool],
             "system_prompt": self.prompt,
             "backend": backend,
             "memory": ["/agent/MEMORY.md"],
@@ -111,7 +125,7 @@ class AgentRuntime:
         return create_deep_agent(**kwargs)
 
     async def _sqlite_checkpointer(self) -> Any:
-        db_path = self.agent_dir / "history.db"
+        db_path = self.history_db_path
         saver = AsyncSqliteSaver.from_conn_string(str(db_path))
         return await self._exit_stack.enter_async_context(saver)
 
@@ -151,6 +165,17 @@ class AgentRuntime:
         path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
         await self.reload()
         return "Memory cleared."
+
+    def search_past_conversations(self, query: str, limit: int = 3) -> list[dict[str, Any]]:
+        return search_past_conversations_in_db(
+            query=query,
+            db_path=self.history_db_path,
+            exclude_thread_id=self.thread_id,
+            limit=limit,
+        )
+
+    def load_past_prompts(self) -> list[str]:
+        return load_past_user_prompts(self.history_db_path)
 
     async def set_model(self, model_name: str) -> str:
         self.settings.model.name = model_name
