@@ -63,6 +63,10 @@ class AgentRuntime:
     def workspace_dir(self) -> Path:
         return self.agent_dir / "workspace"
 
+    @property
+    def history_db_path(self) -> Path:
+        return self.agent_dir / "history.db"
+
     async def reload(self) -> None:
         await self._exit_stack.aclose()
         self._exit_stack = contextlib.AsyncExitStack()
@@ -100,7 +104,7 @@ class AgentRuntime:
         )
 
         memory_tool = create_search_past_conversations_tool(
-            db_path=self.agent_dir / "history.db",
+            db_path=self.history_db_path,
             get_thread_id=lambda: self.thread_id,
         )
 
@@ -121,7 +125,7 @@ class AgentRuntime:
         return create_deep_agent(**kwargs)
 
     async def _sqlite_checkpointer(self) -> Any:
-        db_path = self.agent_dir / "history.db"
+        db_path = self.history_db_path
         saver = AsyncSqliteSaver.from_conn_string(str(db_path))
         return await self._exit_stack.enter_async_context(saver)
 
@@ -165,13 +169,13 @@ class AgentRuntime:
     def search_past_conversations(self, query: str, limit: int = 3) -> list[dict[str, Any]]:
         return search_past_conversations_in_db(
             query=query,
-            db_path=self.agent_dir / "history.db",
+            db_path=self.history_db_path,
             exclude_thread_id=self.thread_id,
             limit=limit,
         )
 
     def load_past_prompts(self) -> list[str]:
-        return load_past_user_prompts(self.agent_dir / "history.db")
+        return load_past_user_prompts(self.history_db_path)
 
     async def set_model(self, model_name: str) -> str:
         self.settings.model.name = model_name
