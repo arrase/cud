@@ -11,8 +11,10 @@ site/
 .coverage
 .coverage.*
 coverage.xml
+ruff-report.json
 htmlcov/
 .pytest_cache/
+.ruff_cache/
 
 # SonarQube
 .scannerwork/
