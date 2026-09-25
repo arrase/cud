@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from cud.agent.episodic_memory import (
-    HistoryError,
     connect_history,
     create_search_past_conversations_tool,
     extract_text,

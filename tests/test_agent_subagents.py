@@ -1,7 +1,6 @@
 from contextlib import AsyncExitStack
 from unittest.mock import MagicMock
 
-import pydantic.root_model
 import pytest
 
 from cud.agent.subagents import (

@@ -2,9 +2,8 @@ import argparse
 import io
 import urllib.error
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pydantic.root_model
 import pytest
 
 from cud.config.paths import agent_home

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pydantic.root_model
 import pytest
 
 from cud.config.scaffold import create_agent

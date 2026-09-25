@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-import pydantic.root_model
 import pytest
 
 from cud.gateway._discord_utils import send_response, split_message

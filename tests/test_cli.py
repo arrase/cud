@@ -19,7 +19,6 @@ from cud.gateway.cli import (
     cmd_gateway_run,
     cmd_gateway_setup,
     cmd_gateway_start,
-    cmd_gateway_stop,
     register_gateway_commands,
 )
 from cud.tui.cli import cmd_tui, register_tui_commands

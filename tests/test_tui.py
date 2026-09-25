@@ -2,7 +2,6 @@ import io
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pydantic.root_model
 import pytest
 from prompt_toolkit.formatted_text import HTML
 from rich.console import Console
