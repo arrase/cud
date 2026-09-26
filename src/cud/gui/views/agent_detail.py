@@ -255,7 +255,7 @@ class AgentDetailView(QWidget):
         self.nav_list.setCurrentRow(0)
 
         # Transaction loading dialogue
-        self.loading_dialog = None
+        self.loading_dialog: QProgressDialog | None = None
 
     def _dismiss_loading(self) -> None:
         """Close and clear the loading dialog if open."""
@@ -327,7 +327,7 @@ class AgentDetailView(QWidget):
     def _run_async_control(self, action: str, label_text: str) -> None:
         """Spawn background control workers in QThreadPool."""
         self.setEnabled(False)
-        self.loading_dialog = QProgressDialog(label_text, None, 0, 0, self)
+        self.loading_dialog = QProgressDialog(label_text, "", 0, 0, self)
         self.loading_dialog.setWindowTitle("Service Control")
         self.loading_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.loading_dialog.setMinimumDuration(0)
@@ -355,7 +355,7 @@ class AgentDetailView(QWidget):
     def on_save_clicked(self) -> None:
         """Save all tabs to disk and trigger an async service restart."""
         self.setEnabled(False)
-        self.loading_dialog = QProgressDialog("Saving files and restarting agent...", None, 0, 0, self)
+        self.loading_dialog = QProgressDialog("Saving files and restarting agent...", "", 0, 0, self)
         self.loading_dialog.setWindowTitle("Save Changes")
         self.loading_dialog.setWindowModality(Qt.WindowModality.WindowModal)
         self.loading_dialog.setMinimumDuration(0)

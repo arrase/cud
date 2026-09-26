@@ -40,7 +40,7 @@ class DiscordGateway:
 
     # -- Session management --------------------------------------------------
 
-    def _get_thread_id(self, message_or_channel: discord.abc.Messageable | discord.Message) -> str:
+    def _get_thread_id(self, message_or_channel: object) -> str:
         """Map a Discord channel/thread/message object to a stable LangGraph thread_id."""
         channel = getattr(message_or_channel, "channel", message_or_channel)
         guild = getattr(channel, "guild", None)

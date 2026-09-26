@@ -5,12 +5,17 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from croniter import croniter
+from discord.abc import Messageable
 
 from cud.gateway._discord_utils import split_message
 from cud.tools.tasks import TaskCard, discover_tasks
+
+if TYPE_CHECKING:
+    from cud.gateway.discord_adapter import DiscordGateway
 
 _log = logging.getLogger(__name__)
 
@@ -22,9 +27,8 @@ class TaskScheduler:
     execution or until :meth:`reload` is called.  No polling.
     """
 
-    def __init__(self, gateway: object) -> None:
-        # gateway is a DiscordGateway but we avoid the circular import.
-        self.gateway = gateway  # type: ignore[assignment]
+    def __init__(self, gateway: DiscordGateway) -> None:
+        self.gateway = gateway
         self._reload_event = asyncio.Event()
 
     # -- public api ----------------------------------------------------------
@@ -89,15 +93,18 @@ class TaskScheduler:
             self.gateway.sessions.pop(thread_id, None)
             await runtime.aclose()
 
-    async def _resolve_target(self, task: TaskCard) -> object | None:
+    async def _resolve_target(self, task: TaskCard) -> Messageable | None:
         """Resolve the Discord destination: channel or DM."""
+        bot = self.gateway.bot
+        if bot is None:
+            return None
         if task.channel_id:
-            channel = self.gateway.bot.get_channel(task.channel_id)
+            channel = bot.get_channel(task.channel_id)
             if channel is not None:
-                return channel
+                return cast(Messageable, channel)
         if task.user_id:
             try:
-                user = await self.gateway.bot.fetch_user(task.user_id)
+                user = await bot.fetch_user(task.user_id)
                 return user
             except Exception:
                 return None

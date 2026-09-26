@@ -9,9 +9,10 @@ import shlex
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.sessions import Connection
 from rich.console import Console
 
 from cud.config.paths import agent_home
@@ -70,7 +71,7 @@ async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[
     if not config.servers:
         return [], None
 
-    client = MultiServerMCPClient(config.servers)
+    client = MultiServerMCPClient(cast(dict[str, Connection], config.servers))
     tools = _filter_tools(await client.get_tools(), config)
     return tools, _make_cleanup(client)
 
@@ -86,7 +87,7 @@ async def load_mcp_tools_for_servers(
     if not servers:
         return [], None
 
-    client = MultiServerMCPClient(servers)
+    client = MultiServerMCPClient(cast(dict[str, Connection], servers))
     tools = await client.get_tools()
     return tools, _make_cleanup(client)
 

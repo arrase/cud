@@ -185,7 +185,7 @@ class MCPTab(QWidget):
 
         for idx, (name, server_data) in enumerate(sorted(self.current_config.servers.items())):
             transport = server_data.get("transport") or "stdio"
-            dest = server_data.get("url") if transport != "stdio" else server_data.get("command", "")
+            dest = str(server_data.get("url") or "") if transport != "stdio" else str(server_data.get("command") or "")
 
             # Set items
             name_item = QTableWidgetItem(name)
