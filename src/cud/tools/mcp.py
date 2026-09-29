@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import shlex
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
@@ -19,7 +17,9 @@ from cud.config.paths import agent_home
 
 console = Console()
 
-_log = logging.getLogger(__name__)
+# Transport values accepted by the adapter; also the GUI combo box items.
+TRANSPORTS = ("stdio", "sse", "streamable_http")
+DEFAULT_TRANSPORT = "stdio"
 
 
 @dataclass(slots=True)
@@ -29,15 +29,36 @@ class MCPConfig:
     disabled_tools: list[str] = field(default_factory=list)
 
 
+def _string_list(raw: Any, key: str) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
+        raise ValueError(f"mcp.json: '{key}' must be a list of strings")
+    return list(raw)
+
+
+def _server_map(raw: Any) -> dict[str, dict[str, Any]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("mcp.json: 'servers' must be an object mapping name -> server config")
+    for name, server in raw.items():
+        if not isinstance(server, dict):
+            raise ValueError(f"mcp.json: server '{name}' must be an object")
+    return raw
+
+
 def load_mcp_config(agent_dir: Path) -> MCPConfig:
     path = agent_dir / "mcp.json"
     if not path.exists():
         return MCPConfig()
     raw = json.loads(path.read_text(encoding="utf-8") or "{}")
+    if not isinstance(raw, dict):
+        raise ValueError(f"mcp.json: expected an object, got {type(raw).__name__}")
     return MCPConfig(
-        servers=raw.get("servers", {}),
-        allowed_tools=raw.get("allowedTools", raw.get("allowed_tools", [])),
-        disabled_tools=raw.get("disabledTools", raw.get("disabled_tools", [])),
+        servers=_server_map(raw.get("servers")),
+        allowed_tools=_string_list(raw.get("allowedTools", raw.get("allowed_tools")), "allowedTools"),
+        disabled_tools=_string_list(raw.get("disabledTools", raw.get("disabled_tools")), "disabledTools"),
     )
 
 
@@ -47,6 +68,7 @@ def save_mcp_config(agent_dir: Path, config: MCPConfig) -> None:
         "allowedTools": config.allowed_tools,
         "disabledTools": config.disabled_tools,
     }
+    agent_dir.mkdir(parents=True, exist_ok=True)
     (agent_dir / "mcp.json").write_text(json.dumps(raw, indent=2) + "\n", encoding="utf-8")
 
 
@@ -60,54 +82,25 @@ def _filter_tools(tools: list[Any], config: MCPConfig) -> list[Any]:
     ]
 
 
-async def load_mcp_tools_managed(agent_dir: Path) -> tuple[list[Any], Callable[[], Coroutine[Any, Any, None]] | None]:
-    """Load MCP tools and return a cleanup callback for the client.
+async def load_mcp_tools_managed(agent_dir: Path) -> list[Any]:
+    """Load the MCP tools declared in the agent's ``mcp.json``.
 
-    Returns ``(tools, cleanup)`` where *cleanup* must be called to close the
-    underlying MCP transports.  When no servers are configured the cleanup
-    callback is ``None``.
+    ``MultiServerMCPClient`` opens a fresh session per tool call and exposes no
+    ``close``, so there is nothing to tear down here.
     """
     config = load_mcp_config(agent_dir)
     if not config.servers:
-        return [], None
-
-    client = MultiServerMCPClient(cast(dict[str, Connection], config.servers))
-    tools = _filter_tools(await client.get_tools(), config)
-    return tools, _make_cleanup(client)
+        return []
+    client = MultiServerMCPClient(cast("dict[str, Connection]", config.servers))
+    return _filter_tools(await client.get_tools(), config)
 
 
-async def load_mcp_tools_for_servers(
-    servers: dict[str, dict[str, Any]],
-) -> tuple[list[Any], Callable[[], Coroutine[Any, Any, None]] | None]:
-    """Load MCP tools from a raw server config dict.
-
-    Same contract as ``load_mcp_tools_managed`` but accepts a pre-built dict
-    instead of reading from the agent's ``mcp.json``.
-    """
+async def load_mcp_tools_for_servers(servers: dict[str, dict[str, Any]]) -> list[Any]:
+    """Load MCP tools from a pre-built server config dict (used by subagents)."""
     if not servers:
-        return [], None
-
-    client = MultiServerMCPClient(cast(dict[str, Connection], servers))
-    tools = await client.get_tools()
-    return tools, _make_cleanup(client)
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_cleanup(client: MultiServerMCPClient) -> Callable[[], Coroutine[Any, Any, None]]:
-    """Build an async cleanup callback for an MCP client."""
-
-    async def cleanup() -> None:
-        if hasattr(client, "close"):
-            try:
-                await client.close()  # type: ignore[attr-defined]
-            except Exception:
-                _log.warning("MCP client cleanup failed", exc_info=True)
-
-    return cleanup
+        return []
+    client = MultiServerMCPClient(cast("dict[str, Connection]", servers))
+    return list(await client.get_tools())
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +115,7 @@ def register_mcp_commands(sub: argparse._SubParsersAction) -> None:
     mcp_add.add_argument("server_url_or_cmd")
     mcp_add.add_argument("--name")
     mcp_add.add_argument("--allowed-tool", action="append", default=[])
-    mcp_add.add_argument("--transport", choices=["stdio", "sse", "streamable_http"], help="Override transport type")
+    mcp_add.add_argument("--transport", choices=list(TRANSPORTS), help="Override transport type")
     mcp_add.add_argument("--env", action="append", default=[], help="Environment variables for stdio (e.g. KEY=VALUE)")
     mcp_add.set_defaults(func=cmd_mcp_add)
     mcp_list = mcp_sub.add_parser("list", help="List MCP servers")
@@ -136,8 +129,10 @@ def _build_stdio_server_config(value: str, env_vars: list[str], transport: str) 
     cmd_args = parts[1:]
     env_dict: dict[str, str] = {}
     for env_var in env_vars:
-        k, _, v = env_var.partition("=")
-        env_dict[k] = v
+        key, sep, v = env_var.partition("=")
+        if not sep or not key:
+            raise ValueError(f"--env must be KEY=VALUE, got {env_var!r}")
+        env_dict[key] = v
     server_config: dict[str, Any] = {"command": command, "args": cmd_args, "transport": transport}
     if env_dict:
         server_config["env"] = env_dict
@@ -147,22 +142,34 @@ def _build_stdio_server_config(value: str, env_vars: list[str], transport: str) 
 def cmd_mcp_add(args: argparse.Namespace) -> int:
     directory = agent_home(args.agent)
     config = load_mcp_config(directory)
-    name = args.name or f"server{len(config.servers) + 1}"
+    name = args.name or _free_server_name(config.servers)
     value = args.server_url_or_cmd
 
     is_url = value.startswith(("http://", "https://"))
     transport = args.transport or ("sse" if is_url else "stdio")
 
-    if transport in ("sse", "streamable_http"):
-        config.servers[name] = {"url": value, "transport": transport}
-    else:
-        config.servers[name] = _build_stdio_server_config(value, args.env, transport)
+    try:
+        if transport in ("sse", "streamable_http"):
+            config.servers[name] = {"url": value, "transport": transport}
+        else:
+            config.servers[name] = _build_stdio_server_config(value, args.env, transport)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        return 2
 
     if args.allowed_tool:
         config.allowed_tools = sorted(set(config.allowed_tools + args.allowed_tool))
     save_mcp_config(directory, config)
     console.print(f"Added MCP server {name}")
     return 0
+
+
+def _free_server_name(servers: dict[str, dict[str, Any]]) -> str:
+    """First unused ``serverN`` name, so an add never silently overwrites one."""
+    index = 1
+    while f"server{index}" in servers:
+        index += 1
+    return f"server{index}"
 
 
 def cmd_mcp_list(args: argparse.Namespace) -> int:

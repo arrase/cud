@@ -19,7 +19,7 @@ def register_gateway_commands(sub: argparse._SubParsersAction) -> None:
     gateway_sub = gateway.add_subparsers(dest="gateway_command", required=True)
     setup = gateway_sub.add_parser("setup", help="Configure gateway credentials")
     setup.add_argument("agent")
-    setup.add_argument("platform", choices=["discord", "telegram", "slack"])
+    setup.add_argument("platform", choices=["discord"])
     setup.add_argument("--token", required=True)
     setup.set_defaults(func=cmd_gateway_setup)
     run = gateway_sub.add_parser("run", help="Run gateway in foreground")
@@ -38,8 +38,6 @@ def register_gateway_commands(sub: argparse._SubParsersAction) -> None:
 
 
 def cmd_gateway_setup(args: argparse.Namespace) -> int:
-    if args.platform != "discord":
-        console.print("[yellow]Only Discord is implemented in v1; credentials were still saved as a stub.[/yellow]")
     directory = agent_home(args.agent)
     settings = load_settings(directory)
     settings.gateway.provider = args.platform
@@ -71,14 +69,26 @@ def cmd_gateway_start(args: argparse.Namespace) -> int:
 
 
 def cmd_gateway_stop(args: argparse.Namespace) -> int:
+    if not _require_systemd():
+        return 1
     result = systemd.systemctl_user("stop", systemd.service_name(args.agent))
     console.print(result.stdout or result.stderr)
     return result.returncode
 
 
 def cmd_gateway_status(args: argparse.Namespace) -> int:
+    if not _require_systemd():
+        return 1
     status = systemd.systemctl_user("status", systemd.service_name(args.agent))
     logs = systemd.journalctl_user(args.agent)
     console.print(status.stdout or status.stderr)
     console.print(logs.stdout or logs.stderr)
+    # 3 == "unit not found", which is a valid "not running" answer here.
     return 0 if status.returncode in (0, 3) else status.returncode
+
+
+def _require_systemd() -> bool:
+    if not systemd.systemd_available():
+        console.print("[red]systemctl not found; systemd is required for this command.[/red]")
+        return False
+    return True

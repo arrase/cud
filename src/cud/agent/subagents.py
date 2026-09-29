@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from contextlib import AsyncExitStack
-from typing import Any, Callable
+from typing import Any
 
 from langchain_ollama import ChatOllama
 
@@ -17,24 +16,19 @@ _log = logging.getLogger(__name__)
 _ENV_RE = re.compile(r"\$\{(\w+)\}")
 
 
-def build_subagents(
+async def build_subagents(
     subagent_settings: list[SubAgentSettings],
     *,
     model_settings: ModelSettings,
-    exit_stack: AsyncExitStack,
-    run_async: Callable[..., Any],
 ) -> list[dict[str, Any]]:
     """Convert ``SubAgentSettings`` into dicts for ``create_deep_agent(subagents=...)``."""
-    return [_build_spec(sa, model_settings=model_settings, exit_stack=exit_stack, run_async=run_async)
-            for sa in subagent_settings]
+    return [await _build_spec(sa, model_settings=model_settings) for sa in subagent_settings]
 
 
-def _build_spec(
+async def _build_spec(
     sa: SubAgentSettings,
     *,
     model_settings: ModelSettings,
-    exit_stack: AsyncExitStack,
-    run_async: Callable[..., Any],
 ) -> dict[str, Any]:
     spec: dict[str, Any] = {
         "name": sa.name,
@@ -53,17 +47,15 @@ def _build_spec(
     if sa.skills_paths:
         spec["skills"] = [f"/agent/{p.removeprefix('./')}" for p in sa.skills_paths]
     if sa.mcp_servers:
-        tools = _load_mcp_tools(sa.name, sa.mcp_servers, exit_stack, run_async)
+        tools = await _load_mcp_tools(sa.name, sa.mcp_servers)
         if tools:
             spec["tools"] = tools
     return spec
 
 
-def _load_mcp_tools(
+async def _load_mcp_tools(
     subagent_name: str,
     mcp_servers: list[SubAgentMCPServer],
-    exit_stack: AsyncExitStack,
-    run_async: Callable[..., Any],
 ) -> list[Any]:
     servers: dict[str, dict[str, Any]] = {}
     for srv in mcp_servers:
@@ -78,11 +70,9 @@ def _load_mcp_tools(
     if not servers:
         return []
     try:
-        tools, cleanup = run_async(load_mcp_tools_for_servers(servers))
-        if cleanup:
-            exit_stack.push_async_callback(cleanup)
-        return tools
+        return await load_mcp_tools_for_servers(servers)
     except Exception as exc:
+        # An unreachable MCP server must not prevent the agent from starting.
         _log.warning("Subagent '%s': MCP tools failed to load: %s", subagent_name, exc)
         return []
 

@@ -1,3 +1,4 @@
+import asyncio
 import io
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -181,7 +182,7 @@ async def test_run_tui_prompt_loop(agent_dir: Path) -> None:
                 raise EOFError()
             return val
         except StopIteration:
-            raise EOFError()
+            raise EOFError() from None
 
     with patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance), \
          patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async), \
@@ -206,3 +207,84 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
 
         code = await run_tui("tui-agent")
         assert code == 0
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_empty_command_does_not_raise(agent_dir: Path) -> None:
+    """Regression: `handle_command("")` raised IndexError on parts[0]."""
+    console = Console(file=io.StringIO(), theme=_THEME)
+    assert await handle_command("", MagicMock(), console) is False
+
+
+@pytest.mark.anyio
+async def test_memory_search_requires_a_space_before_the_query(agent_dir: Path) -> None:
+    """Regression: `/memory searchable` was split into the query "able"."""
+    runtime = MagicMock()
+    console = Console(file=io.StringIO(), theme=_THEME)
+    with patch("cud.tui.app._handle_memory_search") as search:
+        await handle_command("/memory searchable", runtime, console)
+    search.assert_not_called()
+
+    with patch("cud.tui.app._handle_memory_search") as search:
+        await handle_command("/memory search docker", runtime, console)
+    search.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_memory_search_runs_off_the_event_loop(agent_dir: Path) -> None:
+    """Regression: the search scans the whole DB synchronously, freezing the loop."""
+    runtime = MagicMock()
+    console = Console(file=io.StringIO(), theme=_THEME)
+    real_to_thread = asyncio.to_thread
+
+    with patch("cud.tui.app.asyncio.to_thread", wraps=real_to_thread) as to_thread:
+        with patch("cud.tui.app._handle_memory_search"):
+            await handle_command("/memory search docker", runtime, console)
+    to_thread.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_run_tui_survives_broken_settings(agent_dir: Path) -> None:
+    """Regression: an unreadable settings.yaml killed the TUI at startup."""
+    (agent_dir / "settings.yaml").write_text("model: not-a-mapping\n", encoding="utf-8")
+    with patch("cud.tui.app.PromptSession") as session_cls, \
+         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock):
+        session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
+        assert await run_tui("tui-agent") == 0
+
+
+@pytest.mark.anyio
+async def test_run_tui_survives_unreadable_history(agent_dir: Path) -> None:
+    (agent_dir / "history.db").write_bytes(b"this is not a sqlite database")
+    with patch("cud.tui.app.PromptSession") as session_cls, \
+         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock):
+        session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
+        assert await run_tui("tui-agent") == 0
+
+
+@pytest.mark.anyio
+async def test_run_tui_does_not_block_on_history_load(agent_dir: Path) -> None:
+    with patch("cud.tui.app.PromptSession") as session_cls, \
+         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock), \
+         patch("cud.tui.app.load_past_user_prompts", return_value=["a", "b"]), \
+         patch("cud.tui.app.asyncio.to_thread", wraps=asyncio.to_thread) as to_thread:
+        session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
+        assert await run_tui("tui-agent") == 0
+    assert to_thread.call_count >= 1
+
+
+def test_help_panel_and_completer_stay_in_sync() -> None:
+    """Regression: /help and the completer were two hand-kept lists that drifted."""
+    from cud.tui.app import _COMMANDS_META, _completer
+
+    rendered = io.StringIO()
+    _help_panel(Console(file=rendered, theme=_THEME))
+    for command in _COMMANDS_META:
+        assert command.strip() in rendered.getvalue(), command
+    for command in _completer.words:
+        assert command in _COMMANDS_META

@@ -13,8 +13,8 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QMessageBox,
-    QPushButton,
     QProgressDialog,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -24,21 +24,28 @@ from cud.config.paths import agent_home
 from cud.config.settings import Settings, load_settings, save_settings
 from cud.gui.core.system_workers import SystemdWorker
 from cud.gui.widgets.markdown_file_tab import MarkdownFileTab
+from cud.gui.widgets.mcp_tab import MCPTab
 from cud.gui.widgets.settings_tab import SettingsTab
 from cud.gui.widgets.skills_tab import SkillsTab
-from cud.gui.widgets.tasks_tab import TasksTab
-from cud.gui.widgets.mcp_tab import MCPTab
 from cud.gui.widgets.subagents_tab import SubagentsTab
+from cud.gui.widgets.tasks_tab import TasksTab
 
 _log = logging.getLogger(__name__)
 
 
-def _load_tab_safe(label: str, loader: Callable[..., Any], *args: Any) -> None:
-    """Invoke *loader* catching exceptions so one broken tab cannot abort the rest."""
+def _load_tab_safe(label: str, loader: Callable[..., Any], *args: Any) -> bool:
+    """Invoke *loader* catching exceptions so one broken tab cannot abort the rest.
+
+    Returns False on failure.  The caller must not save after a failed load:
+    the tab still holds defaults or placeholder text and writing it back would
+    destroy the agent's real configuration.
+    """
     try:
         loader(*args)
     except Exception as exc:
         _log.warning("Failed to load tab '%s': %s", label, exc)
+        return False
+    return True
 
 
 class AgentDetailView(QWidget):
@@ -67,6 +74,7 @@ class AgentDetailView(QWidget):
         super().__init__(parent)
         self.agent_name = ""
         self._active_workers: set[SystemdWorker] = set()
+        self._failed_tabs: list[str] = []
 
         # Root layout
         self.main_layout = QVBoxLayout(self)
@@ -221,9 +229,9 @@ class AgentDetailView(QWidget):
         footer.setContentsMargins(0, 10, 0, 2)
         footer.setSpacing(12)
 
-        footer_hint = QLabel("Changes are applied after saving.")
-        footer_hint.setStyleSheet("color: #555555; font-size: 11px;")
-        footer.addWidget(footer_hint)
+        self._footer_hint = QLabel("Changes are applied after saving.")
+        self._footer_hint.setStyleSheet("color: #555555; font-size: 11px;")
+        footer.addWidget(self._footer_hint)
         footer.addStretch(1)
 
         # Use && so Qt renders a literal ampersand instead of a mnemonic
@@ -269,23 +277,45 @@ class AgentDetailView(QWidget):
         self.title_label.setText(f"Agent Administration: {agent_name}")
 
         agent_dir = agent_home(agent_name)
+        failed: list[str] = []
 
         # Load settings once and share the snapshot across tabs that need it.
+        settings: Settings | None = None
         try:
             settings = load_settings(agent_dir)
         except Exception as exc:
             _log.warning("Failed to load settings for '%s': %s", agent_name, exc)
-            settings = Settings()
+            failed.append("General")
 
         # Load configurations — each tab is isolated so one failure does not
         # prevent the remaining tabs from loading.
-        _load_tab_safe("Settings", self.tab_settings.load_from_settings, settings)
-        _load_tab_safe("Prompt", self.tab_prompt.load_file, agent_dir / "AGENT.md")
-        _load_tab_safe("Memory", self.tab_memory.load_file, agent_dir / "MEMORY.md")
-        _load_tab_safe("Skills", self.tab_skills.load_data, agent_dir)
-        _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir)
-        _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir)
-        _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents)
+        if settings is not None:
+            if not _load_tab_safe("Settings", self.tab_settings.load_from_settings, settings):
+                failed.append("General")
+            if not _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents):
+                failed.append("Subagents")
+
+        # A tab that did not load still shows its placeholder/default content,
+        # so it must block the save or it would overwrite the real file.
+        if not _load_tab_safe("Prompt", self.tab_prompt.load_file, agent_dir / "AGENT.md"):
+            failed.append("Instructions")
+        if not _load_tab_safe("Memory", self.tab_memory.load_file, agent_dir / "MEMORY.md"):
+            failed.append("Memory")
+        if not _load_tab_safe("Skills", self.tab_skills.load_data, agent_dir):
+            failed.append("Skills")
+        if not _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir):
+            failed.append("Tasks")
+        if not _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir):
+            failed.append("MCP")
+
+        self._failed_tabs = sorted(set(failed))
+        self.btn_save.setEnabled(not self._failed_tabs)
+        if self._failed_tabs:
+            _log.warning("Save disabled; failed tabs: %s", ", ".join(self._failed_tabs))
+            footer_hint = "⚠ Fix the highlighted tabs before saving: " + ", ".join(self._failed_tabs)
+        else:
+            footer_hint = "Changes are applied after saving."
+        self._footer_hint.setText(footer_hint)
 
     def on_category_changed(self, row: int) -> None:
         if row >= 0:
@@ -354,6 +384,17 @@ class AgentDetailView(QWidget):
 
     def on_save_clicked(self) -> None:
         """Save all tabs to disk and trigger an async service restart."""
+        if self._failed_tabs:
+            QMessageBox.critical(
+                self,
+                "Cannot Save",
+                "These tabs failed to load, so saving would overwrite them with\n"
+                "empty content and destroy the agent's configuration:\n\n  "
+                + "\n  ".join(self._failed_tabs)
+                + "\n\nFix the files in the agent directory, then reopen the agent.",
+            )
+            return
+
         self.setEnabled(False)
         self.loading_dialog = QProgressDialog("Saving files and restarting agent...", "", 0, 0, self)
         self.loading_dialog.setWindowTitle("Save Changes")
@@ -380,10 +421,10 @@ class AgentDetailView(QWidget):
             self.tab_mcp.save_data(agent_dir)
 
             # 5. Save Skills (workspace/skills/)
-            self.tab_skills.save_data(agent_dir)
+            skipped = self.tab_skills.save_data(agent_dir)
 
             # 6. Save Tasks (workspace/tasks/)
-            self.tab_tasks.save_data(agent_dir)
+            skipped += self.tab_tasks.save_data(agent_dir)
 
             # 7. Trigger Async Restart
             worker = SystemdWorker("restart", self.agent_name)
@@ -394,10 +435,26 @@ class AgentDetailView(QWidget):
             self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
 
+            if skipped:
+                _log.warning("Skipped unwritable skill/task directories: %s", ", ".join(skipped))
+                QMessageBox.warning(
+                    self,
+                    "Partially Saved",
+                    "These directories were left untouched because their names are not "
+                    "valid directory names:\n\n  " + "\n  ".join(skipped)
+                    + "\n\nEverything else was saved. Rename them in the agent directory.",
+                )
+
         except Exception as e:
+            _log.exception("Save failed for agent '%s'", self.agent_name)
             self._dismiss_loading()
             self.setEnabled(True)
-            QMessageBox.critical(self, "Save Failed", f"Error writing configurations to disk:\n\n{e}")
+            QMessageBox.critical(
+                self,
+                "Save Failed",
+                f"An error occurred while writing configurations to disk.\n\n"
+                f"Some files may have already been written; check the agent directory.\n\n{e}",
+            )
 
     def _on_save_restart_finished(self, action: str, service_name: str, message: str) -> None:
         # Give systemd service 1.5 seconds to bootstrap properly before polling status

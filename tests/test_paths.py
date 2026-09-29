@@ -70,3 +70,23 @@ def test_agent_home_invalid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
     monkeypatch.setenv("CUD_HOME", str(tmp_path))
     with pytest.raises(ValueError):
         agent_home("../invalid")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "agent\n",
+        "a\nExecStartPre=/tmp/x\n#",
+        "agent\r\n",
+        "agent ",
+    ],
+)
+def test_validate_agent_name_rejects_newlines(name: str) -> None:
+    """Regression: `$` also matches before a trailing newline, and agent names
+    are interpolated into line-oriented systemd unit files."""
+    with pytest.raises(ValueError, match="agent name must start with"):
+        validate_agent_name(name)
+
+
+def test_validate_agent_name_accepts_64_chars() -> None:
+    assert validate_agent_name("a" * 64) == "a" * 64

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPushButton
+
+ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "icon.png"
 
 
 # ---------------------------------------------------------------------------

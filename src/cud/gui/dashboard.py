@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
 
-from cud.gui.views.inventory import InventoryView
+from cud.gui.core.styles import ICON_PATH
 from cud.gui.views.agent_detail import AgentDetailView
-
-ICON_PATH = Path(__file__).parent / "assets" / "icon.png"
+from cud.gui.views.inventory import InventoryView
 
 
 class MainWindow(QMainWindow):

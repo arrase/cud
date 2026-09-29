@@ -18,15 +18,20 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from cud.gui.core.styles import ACTION_BTN_ADD, ACTION_BTN_DELETE, ACTION_BTN_UPDATE, TABLE_STYLE
-from cud.tools.mcp import MCPConfig, load_mcp_config, save_mcp_config
+from cud.gui.core.styles import (
+    ACTION_BTN_ADD,
+    ACTION_BTN_DELETE,
+    ACTION_BTN_UPDATE,
+    TABLE_STYLE,
+    create_action_button,
+)
+from cud.tools.mcp import DEFAULT_TRANSPORT, TRANSPORTS, MCPConfig, load_mcp_config, save_mcp_config
 
 
 def _parse_env_text(text: str) -> dict[str, str]:
@@ -84,13 +89,8 @@ class MCPTab(QWidget):
 
         # Table Action Buttons
         self.table_actions = QHBoxLayout()
-        self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
-        self.btn_add.clicked.connect(self.on_add_clicked)
-
-        self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
-        self.btn_delete.clicked.connect(self.on_delete_clicked)
+        self.btn_add = create_action_button("➕ Add", ACTION_BTN_ADD, self.on_add_clicked)
+        self.btn_delete = create_action_button("❌ Delete", ACTION_BTN_DELETE, self.on_delete_clicked)
 
         self.table_actions.addWidget(self.btn_add)
         self.table_actions.addWidget(self.btn_delete)
@@ -110,9 +110,7 @@ class MCPTab(QWidget):
         self.input_name.setPlaceholderText("e.g., my-mcp-server")
 
         self.input_transport = QComboBox()
-        self.input_transport.addItems(["stdio", "sse", "streamable_http"])
-        self.input_transport.currentTextChanged.connect(self.on_transport_changed)
-
+        self.input_transport.addItems(list(TRANSPORTS))
         self.input_cmd_url = QLineEdit()
         self.input_cmd_url.setPlaceholderText("e.g., npx (stdio) or http://localhost:8080/sse (sse)")
 
@@ -123,15 +121,16 @@ class MCPTab(QWidget):
         self.input_env.setPlaceholderText("e.g.,\nDB_URL=postgresql://localhost/db\nAPI_KEY=12345")
         self.input_env.setFixedHeight(80)
 
+        # Connected last: the handler touches input_args/input_env.
+        self.input_transport.currentTextChanged.connect(self.on_transport_changed)
+
         self.form_layout.addRow("Server Name:", self.input_name)
         self.form_layout.addRow("Transport Type:", self.input_transport)
         self.form_layout.addRow("Command / URL:", self.input_cmd_url)
         self.form_layout.addRow("Arguments:", self.input_args)
         self.form_layout.addRow("Environment (KEY=VALUE):", self.input_env)
 
-        self.btn_update = QPushButton("💾 Update Server Data")
-        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
-        self.btn_update.clicked.connect(self.on_update_clicked)
+        self.btn_update = create_action_button("💾 Update Server Data", ACTION_BTN_UPDATE, self.on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
         self.right_col.addWidget(self.group_editor)
@@ -180,11 +179,10 @@ class MCPTab(QWidget):
 
     def refresh_table(self) -> None:
         """Regenerate the list table with the in-memory config dicts."""
-        self.servers_table.setRowCount(0)
         self.servers_table.setRowCount(len(self.current_config.servers))
 
         for idx, (name, server_data) in enumerate(sorted(self.current_config.servers.items())):
-            transport = server_data.get("transport") or "stdio"
+            transport = server_data.get("transport") or DEFAULT_TRANSPORT
             dest = str(server_data.get("url") or "") if transport != "stdio" else str(server_data.get("command") or "")
 
             # Set items
@@ -210,6 +208,28 @@ class MCPTab(QWidget):
         # Clear form fields
         self.clear_form()
 
+    def _selected_name(self) -> str | None:
+        """Name of the selected row, or None.
+
+        `selectedItems()[0]` is not guaranteed to be column 0, so read the
+        name cell of the selected row explicitly.
+        """
+        items = self.servers_table.selectionModel().selectedRows() if self.servers_table.model() else []
+        if not items:
+            return None
+        item = self.servers_table.item(items[0].row(), 0)
+        return item.text() if item is not None else None
+
+    def _select_by_name(self, name: str) -> None:
+        for row in range(self.servers_table.rowCount()):
+            item = self.servers_table.item(row, 0)
+            if item and item.text() == name:
+                self.servers_table.selectRow(row)
+                # Re-selecting an already-selected row emits no signal, so
+                # repopulate the form explicitly.
+                self.on_server_selected()
+                return
+
     def clear_form(self) -> None:
         self.selected_server_name = ""
         self.input_name.clear()
@@ -220,13 +240,11 @@ class MCPTab(QWidget):
 
     def on_server_selected(self) -> None:
         """Triggered when a table row is selected. Populates form fields."""
-        selected_items = self.servers_table.selectedItems()
-        if not selected_items:
+        name = self._selected_name()
+        if name is None:
             self.clear_form()
             return
 
-        # Row name is first item
-        name = selected_items[0].text()
         server_data = self.current_config.servers.get(name)
         if server_data is None:
             self.clear_form()
@@ -235,7 +253,11 @@ class MCPTab(QWidget):
         self.selected_server_name = name
         self.input_name.setText(name)
 
-        transport = server_data.get("transport") or "stdio"
+        transport = server_data.get("transport") or DEFAULT_TRANSPORT
+        if transport not in TRANSPORTS and self.input_transport.findText(transport) < 0:
+            # Keep an unknown transport visible instead of silently showing
+            # "stdio" and rewriting the entry as stdio on the next update.
+            self.input_transport.addItem(transport)
         self.input_transport.setCurrentText(transport)
 
         if transport == "stdio":
@@ -268,21 +290,15 @@ class MCPTab(QWidget):
         }
         self.refresh_table()
 
-        # Find and select the newly added row
-        for row in range(self.servers_table.rowCount()):
-            item = self.servers_table.item(row, 0)
-            if item and item.text() == new_name:
-                self.servers_table.selectRow(row)
-                break
+        self._select_by_name(new_name)
 
     def on_delete_clicked(self) -> None:
         """Delete currently selected server row."""
-        selected_items = self.servers_table.selectedItems()
-        if not selected_items:
+        name = self._selected_name()
+        if name is None:
             QMessageBox.warning(self, "Delete Server", "Please select a server from the table.")
             return
 
-        name = selected_items[0].text()
         confirm = QMessageBox.question(
             self,
             "Delete Server",
@@ -351,6 +367,7 @@ class MCPTab(QWidget):
         self.selected_server_name = name
 
         self.refresh_table()
+        self._select_by_name(name)
         QMessageBox.information(self, "Data Updated", f"Server '{name}' data updated in memory.")
 
     def save_data(self, agent_dir: Path) -> None:

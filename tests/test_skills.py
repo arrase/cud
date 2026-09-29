@@ -14,6 +14,7 @@ from cud.tools.skills import (
     cmd_tools_install,
     discover_skills,
     register_tools_commands,
+    valid_dir_name,
 )
 
 
@@ -196,3 +197,93 @@ def test_register_tools_commands() -> None:
     args = parser.parse_args(["tools", "install", "my-agent", "/path"])
     assert args.agent == "my-agent"
     assert args.path == "/path"
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_skill_card_is_hashable() -> None:
+    """Regression: `frozen=True` generates __hash__, but the dict field made it
+    raise TypeError at runtime."""
+    card = SkillCard(name="n", description="d", path=Path("/x/SKILL.md"), metadata={"a": 1})
+    assert isinstance(hash(card), int)
+
+
+def test_single_file_install_reports_already_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: the single-.md branch raised an unhandled FileExistsError
+    instead of returning the documented exit code 2."""
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("dup-agent")
+    source = tmp_path / "myskill.md"
+    source.write_text("---\nname: myskill\ndescription: d\n---\nbody", encoding="utf-8")
+
+    args = argparse.Namespace(agent="dup-agent", path=str(source))
+    assert cmd_tools_install(args) == 0
+    assert cmd_tools_install(args) == 2
+
+
+@pytest.mark.parametrize("bad", ["..", ".", "a/b", "/abs", "-x", ""])
+def test_valid_dir_name_rejects_path_escapes(bad: str) -> None:
+    with pytest.raises(ValueError, match="alphanumeric"):
+        valid_dir_name(bad)
+
+
+def test_install_rejects_unsafe_local_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Regression: a single .md file's stem became a directory name unchecked."""
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("esc-agent")
+    source = tmp_path / "-evil.md"
+    source.write_text("---\nname: evil\ndescription: d\n---\nbody", encoding="utf-8")
+
+    args = argparse.Namespace(agent="esc-agent", path=str(source))
+    assert cmd_tools_install(args) == 2
+    assert not (tmp_path / "agents" / "esc-agent" / "workspace" / "-evil").exists()
+
+
+def test_unreadable_skill_file_is_skipped_not_fatal(tmp_path: Path) -> None:
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    (bad / "SKILL.md").write_bytes(b"---\nname: \xff\n---\nx")
+    good = tmp_path / "good"
+    good.mkdir()
+    (good / "SKILL.md").write_text("---\nname: good\ndescription: d\n---\nbody", encoding="utf-8")
+    assert [c.name for c in discover_skills(tmp_path)] == ["good"]
+
+
+def test_remote_install_rejects_unsafe_derived_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: the directory name was taken from the URL with no validation."""
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("rem-agent")
+    skills_dir = tmp_path / "agents" / "rem-agent" / "workspace" / "skills"
+    before = {p.name for p in skills_dir.iterdir()}
+    for url in ("https://example.com/..", "https://example.com/a%2Fb/../../.."):
+        args = argparse.Namespace(agent="rem-agent", path=url)
+        assert cmd_tools_install(args) == 2, url
+    assert {p.name for p in skills_dir.iterdir()} == before
+
+
+def test_remote_install_rejects_oversized_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("big-agent")
+
+    class FakeResponse:
+        def read(self, *_args: object) -> bytes:
+            return b"x" * (512 * 1024 + 1)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc: object) -> None:
+            return None
+
+    monkeypatch.setattr("cud.tools.skills.urllib.request.urlopen", lambda *a, **k: FakeResponse())
+    args = argparse.Namespace(agent="big-agent", path="https://example.com/skill.md")
+    assert cmd_tools_install(args) == 1

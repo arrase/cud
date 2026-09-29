@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, QSize, Qt, QThreadPool, Signal
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QRectF, QSize, Qt, QThreadPool, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
     QFrame,
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStyle,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -24,21 +27,38 @@ from cud.config.paths import validate_agent_name
 from cud.config.scaffold import create_agent, list_agents
 from cud.gui.core.system_workers import SystemdWorker
 
+_log = logging.getLogger(__name__)
+
+# Model roles for the status LED text and the agent's home path.
+STATUS_ROLE_OFFSET = 2
+PATH_ROLE_OFFSET = 3
+STATUS_CHECKING = "checking"
+HOME_PATH = Path.home()
+
 
 class AgentItemDelegate(QStyledItemDelegate):
     """Custom delegate painting premium dark-themed agent info cards with status LEDs."""
 
-    def sizeHint(self, option, index) -> QSize:
+    def sizeHint(
+        self,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> QSize:
         return QSize(250, 85)
 
-    def paint(self, painter: QPainter, option, index) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | QPersistentModelIndex,
+    ) -> None:
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Get metadata roles
         name = index.data(Qt.ItemDataRole.DisplayRole)
-        status = index.data(Qt.ItemDataRole.UserRole + 2) or "inactive"
-        home_path = index.data(Qt.ItemDataRole.UserRole + 3) or ""
+        status = index.data(Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET) or "inactive"
+        home_path = index.data(Qt.ItemDataRole.UserRole + PATH_ROLE_OFFSET) or ""
 
         # Rect geometries
         rect = option.rect
@@ -98,7 +118,7 @@ class AgentItemDelegate(QStyledItemDelegate):
         painter.setFont(sub_font)
         painter.setPen(QColor("#8A8A8F"))
 
-        display_path = home_path.replace(str(Path.home()), "~")
+        display_path = home_path.replace(str(HOME_PATH), "~")
         painter.drawText(int(text_x), int(sub_y), f"{display_path}  •  Status: {status}")
 
         painter.restore()
@@ -112,6 +132,7 @@ class InventoryView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._active_workers: set[SystemdWorker] = set()
+        self._generation = 0
 
         # Main Layout
         self.main_layout = QVBoxLayout(self)
@@ -165,42 +186,48 @@ class InventoryView(QWidget):
             self.model.appendRow(placeholder)
             return
 
+        # Tag each load so signals from a superseded generation are ignored;
+        # a late worker from the previous load would otherwise paint a stale
+        # status into the rebuilt model.
+        generation = self._generation = self._generation + 1
         for path in agents:
             agent_name = path.name
             item = QStandardItem(agent_name)
-            item.setData("checking", Qt.ItemDataRole.UserRole + 2)
-            item.setData(str(path), Qt.ItemDataRole.UserRole + 3)
+            item.setData(STATUS_CHECKING, Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET)
+            item.setData(str(path), Qt.ItemDataRole.UserRole + PATH_ROLE_OFFSET)
             self.model.appendRow(item)
 
             # Async Status Query via QThreadPool
             worker = SystemdWorker("status", agent_name)
-            worker.signals.status_checked.connect(self._on_status_checked)
-            worker.signals.error.connect(self._on_status_error)
+            worker.signals.status_checked.connect(
+                partial(self._on_status_checked, generation))
+            worker.signals.error.connect(partial(self._on_status_error, generation))
             worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
             worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
             self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
 
-    def _on_status_checked(self, service_name: str, is_active: bool, status_text: str) -> None:
-        agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
-
+    def _set_status(self, agent_name: str, status: str) -> None:
         for row in range(self.model.rowCount()):
             item = self.model.item(row)
             if item and item.text() == agent_name:
-                status = "active" if is_active else "inactive"
-                if "failed" in status_text or "error" in status_text:
-                    status = "failed"
-                item.setData(status, Qt.ItemDataRole.UserRole + 2)
-                break
+                item.setData(status, Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET)
+                return
 
-    def _on_status_error(self, action: str, service_name: str, error_message: str) -> None:
-        agent_name = service_name.removeprefix("cud-gateway-").removesuffix(".service")
+    def _on_status_checked(self, generation: int, agent_name: str, is_active: bool, status_text: str) -> None:
+        if generation != self._generation:
+            return
+        status = "active" if is_active else "inactive"
+        if "failed" in status_text or "error" in status_text:
+            status = "failed"
+        self._set_status(agent_name, status)
 
-        for row in range(self.model.rowCount()):
-            item = self.model.item(row)
-            if item and item.text() == agent_name:
-                item.setData("inactive", Qt.ItemDataRole.UserRole + 2)
-                break
+    def _on_status_error(self, generation: int, action: str, agent_name: str, error_message: str) -> None:
+        if generation != self._generation:
+            return
+        # Surface the failure instead of pretending the service is merely stopped.
+        _log.warning("Status check failed for '%s': %s", agent_name, error_message)
+        self._set_status(agent_name, "failed")
 
     def on_create_agent_clicked(self) -> None:
         name, ok = QInputDialog.getText(
@@ -225,8 +252,10 @@ class InventoryView(QWidget):
             QMessageBox.critical(self, "Invalid Name", str(e))
         except FileExistsError as e:
             QMessageBox.critical(self, "Agent Already Exists", str(e))
+        except OSError as e:
+            QMessageBox.critical(self, "Creation Failed", str(e))
 
-    def on_agent_double_clicked(self, index) -> None:
+    def on_agent_double_clicked(self, index: QModelIndex) -> None:
         item = self.model.itemFromIndex(index)
         if item and item.isEnabled():
             self.agent_selected.emit(item.text())

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,11 +37,25 @@ from cud.gui.core.styles import (
     monospace_font,
 )
 from cud.tools._frontmatter import render_frontmatter
-from cud.tools.tasks import discover_tasks
+from cud.tools.skills import is_safe_dir_name, valid_dir_name
+from cud.tools.tasks import discover_tasks, next_run
+
+
+def _parse_optional_int(text: str, label: str) -> int | None:
+    """Parse an optional integer field; raise on a non-numeric value."""
+    text = text.strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a number, got {text!r}") from exc
 
 
 def _write_task_entry(tasks_dir: Path, entry: dict[str, Any]) -> str:
-    dir_name = entry["dir_name"]
+    # Safety invariant of this helper: it must never be able to write outside
+    # *tasks_dir*, whatever the caller passes in.
+    dir_name = valid_dir_name(entry["dir_name"])
     task_dir = tasks_dir / dir_name
     task_dir.mkdir(parents=True, exist_ok=True)
 
@@ -63,14 +77,16 @@ def _write_task_entry(tasks_dir: Path, entry: dict[str, Any]) -> str:
     return dir_name
 
 
-def _cleanup_deleted_tasks(tasks_dir: Path, written_dirs: set[str]) -> None:
-    if not tasks_dir.exists():
-        return
-    for existing in tasks_dir.iterdir():
-        if not existing.is_dir() or existing.name.startswith(("__", ".")):
-            continue
-        if existing.name not in written_dirs:
-            shutil.rmtree(existing)
+def _remove_deleted_tasks(tasks_dir: Path, deleted_dirs: set[str]) -> None:
+    """Remove only the directories the user explicitly deleted.
+
+    Sweeping "every directory not in memory" destroys tasks whose discovery
+    failed, so the deletion set is tracked explicitly instead.
+    """
+    for dir_name in deleted_dirs:
+        target = tasks_dir / dir_name
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
 
 
 class TasksTab(QWidget):
@@ -81,6 +97,7 @@ class TasksTab(QWidget):
         self.agent_dir: Path | None = None
         self._tasks_data: list[dict[str, Any]] = []
         self._selected_index: int = -1
+        self._deleted_dirs: set[str] = set()
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 16, 16, 16)
@@ -187,11 +204,10 @@ class TasksTab(QWidget):
         self.agent_dir = agent_dir
         self._tasks_data.clear()
         self._selected_index = -1
+        self._deleted_dirs = set()
 
         tasks_dir = agent_dir / "workspace" / "tasks"
-        tasks = discover_tasks(tasks_dir)
-
-        for task in tasks:
+        for task in discover_tasks(tasks_dir):
             self._tasks_data.append({
                 "name": task.name,
                 "description": task.description,
@@ -205,17 +221,33 @@ class TasksTab(QWidget):
 
         self._refresh_table()
 
-    def save_data(self, agent_dir: Path) -> None:
-        """Write all in-memory task data back to disk as TASK.md files."""
+    def save_data(self, agent_dir: Path) -> list[str]:
+        """Write all in-memory task data back to disk as TASK.md files.
+
+        Returns the directory names that could not be written, so the caller can
+        warn instead of silently losing the entry.
+        """
         tasks_dir = agent_dir / "workspace" / "tasks"
         tasks_dir.mkdir(parents=True, exist_ok=True)
-        written_dirs = {_write_task_entry(tasks_dir, entry) for entry in self._tasks_data}
-        _cleanup_deleted_tasks(tasks_dir, written_dirs)
+        skipped: list[str] = []
+        live_dirs: set[str] = set()
+        for entry in self._tasks_data:
+            dir_name = entry["dir_name"]
+            if not is_safe_dir_name(dir_name):
+                # Pre-existing on-disk name we cannot safely write to; leave the
+                # original file untouched rather than aborting the whole save.
+                skipped.append(str(dir_name))
+                continue
+            live_dirs.add(str(dir_name))
+            _write_task_entry(tasks_dir, entry)
+        _remove_deleted_tasks(tasks_dir, self._deleted_dirs - live_dirs)
+        self._deleted_dirs = set()
+        return skipped
 
     def _refresh_table(self) -> None:
         """Regenerate the table from in-memory data."""
         self.table.setRowCount(len(self._tasks_data))
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         for idx, entry in enumerate(self._tasks_data):
             # 1. Name
@@ -237,9 +269,9 @@ class TasksTab(QWidget):
             self.table.setItem(idx, 1, schedule_item)
 
             # 3. Destination
-            if entry.get("channel_id"):
+            if entry.get("channel_id") is not None:
                 dest_str = f"Discord Channel: {entry['channel_id']}"
-            elif entry.get("user_id"):
+            elif entry.get("user_id") is not None:
                 dest_str = f"User DM: {entry['user_id']}"
             else:
                 dest_str = "Console"
@@ -259,15 +291,11 @@ class TasksTab(QWidget):
             self.table.setItem(idx, 3, enabled_item)
 
             # 5. Next Run Time
-            next_run = "—"
+            next_run_text = "—"
             if enabled:
-                try:
-                    cron = croniter(entry["schedule"], now)
-                    next_run_dt = cron.get_next(datetime)
-                    next_run = next_run_dt.strftime("%Y-%m-%d %H:%M UTC")
-                except Exception:
-                    next_run = "Invalid Cron"
-            next_run_item = QTableWidgetItem(next_run)
+                upcoming = next_run(entry["schedule"], now)
+                next_run_text = upcoming.strftime("%Y-%m-%d %H:%M UTC") if upcoming else "Invalid Cron"
+            next_run_item = QTableWidgetItem(next_run_text)
             next_run_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
             next_run_item.setForeground(QColor("#F1C40F"))
             self.table.setItem(idx, 4, next_run_item)
@@ -316,10 +344,21 @@ class TasksTab(QWidget):
 
         name = name.strip()
         dir_name = name.lower().replace(" ", "-")
+        try:
+            # The name becomes a path segment, so it must not escape the
+            # tasks directory.
+            valid_dir_name(dir_name)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid Name", f"Cannot create task:\n\n{exc}")
+            return
+
         existing_dirs = {e["dir_name"] for e in self._tasks_data}
         if dir_name in existing_dirs:
             QMessageBox.warning(self, "Duplicate", f"A task with directory name '{dir_name}' already exists.")
             return
+
+        # Re-creating a previously deleted name: drop the pending deletion.
+        self._deleted_dirs.discard(dir_name)
 
         self._tasks_data.append({
             "name": name,
@@ -349,6 +388,7 @@ class TasksTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm == QMessageBox.StandardButton.Yes:
+            self._deleted_dirs.add(entry["dir_name"])
             del self._tasks_data[self._selected_index]
             self._refresh_table()
 
@@ -374,9 +414,13 @@ class TasksTab(QWidget):
             QMessageBox.critical(self, "Invalid Cron", f"The cron expression is not valid:\n\n{exc}")
             return
 
-        # Parse optional integer fields
-        channel_id = self._parse_optional_int(self.input_channel_id.text())
-        user_id = self._parse_optional_int(self.input_user_id.text())
+        # Parse optional integer fields; a typo must not silently retarget the task
+        try:
+            channel_id = _parse_optional_int(self.input_channel_id.text(), "Channel ID")
+            user_id = _parse_optional_int(self.input_user_id.text(), "User ID")
+        except ValueError as exc:
+            QMessageBox.critical(self, "Data Error", str(exc))
+            return
 
         entry = self._tasks_data[self._selected_index]
         entry["name"] = name
@@ -392,13 +436,4 @@ class TasksTab(QWidget):
         self.table.selectRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Task '{name}' updated in memory.")
 
-    @staticmethod
-    def _parse_optional_int(text: str) -> int | None:
-        """Parse an optional integer field, returning None if empty or invalid."""
-        text = text.strip()
-        if not text:
-            return None
-        try:
-            return int(text)
-        except ValueError:
-            return None
+

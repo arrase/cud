@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
 from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
 
 from prompt_toolkit import PromptSession
@@ -26,6 +29,11 @@ from cud.config.settings import load_settings
 # ---------------------------------------------------------------------------
 # Theme & constants
 # ---------------------------------------------------------------------------
+
+_log = logging.getLogger(__name__)
+
+# Bound the in-memory prompt history so a long-lived agent cannot grow it forever.
+_MAX_HISTORY_PROMPTS = 500
 
 _STYLE_DIM = "cud.dim"
 _STYLE_SUCCESS = "cud.success"
@@ -111,18 +119,8 @@ def _system_message(text: str, style: str, console: Console) -> None:
 
 def _help_panel(console: Console) -> None:
     """Render a styled help panel with available commands."""
-    commands = [
-        ("/new", "Start a new session"),
-        ("/model <name>", "Switch model"),
-        (_CMD_UNDO, "Remove last exchange"),
-        (_CMD_RELOAD, "Reload tools & prompt"),
-        ("/memory view", "View agent memory"),
-        ("/memory clear", "Clear agent memory"),
-        ("/memory search <q>", "Search past sessions"),
-        (_CMD_QUIT, "Exit"),
-    ]
     lines = Text()
-    for cmd, desc in commands:
+    for cmd, desc in _COMMANDS_META.items():
         lines.append(f"  {cmd:<18}", style="cyan")
         lines.append(f" {desc}\n", style="dim")
 
@@ -148,6 +146,7 @@ def _build_prompt_message() -> HTML:
     return HTML('<style fg="#6e6e6e">❯</style> ')
 
 
+# Single source of truth for the completer and /help, so they cannot drift.
 _COMMANDS_META = {
     "/new": "Start a new session",
     "/model ": "Switch model",
@@ -210,9 +209,10 @@ async def _handle_memory_command(args: str, runtime: AgentRuntime, console: Cons
     elif args == "clear":
         result = await runtime.clear_memory()
         _system_message(result, _STYLE_SUCCESS, console)
-    elif args.startswith("search"):
-        query = args.removeprefix("search").strip()
-        _handle_memory_search(query, runtime, console)
+    elif args == "search" or args.startswith("search "):
+        _, _, query = args.partition(" ")
+        # The search scans the whole history DB: keep it off the event loop.
+        await asyncio.to_thread(_handle_memory_search, query.strip(), runtime, console)
     else:
         _system_message("Usage: /memory view | /memory clear | /memory search <query>", _STYLE_WARNING, console)
 
@@ -220,6 +220,8 @@ async def _handle_memory_command(args: str, runtime: AgentRuntime, console: Cons
 async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> bool:
     """Handle slash commands. Returns True if the command is /quit or /exit."""
     parts = cmd.split(maxsplit=1)
+    if not parts:
+        return False
     command = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
 
@@ -264,15 +266,24 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
         _system_message(f"Agent '{agent_name}' not found.", _STYLE_ERROR, console)
         return 1
 
-    settings = load_settings(agent_dir)
     prompt_message = _build_prompt_message()
     prompt_history = InMemoryHistory()
-    for prompt_text in load_past_user_prompts(agent_dir / "history.db"):
+    db_path = agent_dir / "history.db"
+    # Reading history deserializes every row of the writes table: keep it off
+    # the event loop and never let a corrupt database kill the TUI at startup.
+    try:
+        past_prompts = await asyncio.to_thread(load_past_user_prompts, db_path)
+    except Exception as exc:
+        _log.warning("Could not load prompt history", exc_info=exc)
+        past_prompts = []
+    for prompt_text in past_prompts[-_MAX_HISTORY_PROMPTS:]:
         prompt_history.append_string(prompt_text)
     session: PromptSession[str] = PromptSession(completer=_completer, history=prompt_history)
 
     thread_id = thread_id or uuid4().hex
-    _welcome_banner(agent_name, settings.model.name, thread_id, console)
+    # Only used for the banner; the runtime re-reads settings on first invoke.
+    model_name = _banner_model_name(agent_dir)
+    _welcome_banner(agent_name, model_name, thread_id, console)
 
     async with AgentRuntime(agent_dir, thread_id=thread_id) as runtime:
         while True:
@@ -306,7 +317,16 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
                 console.print()
                 _system_message("Interrupted.", _STYLE_DIM, console)
                 break
-            except Exception as e:
-                _system_message(f"Error: {e}", _STYLE_ERROR, console)
+            except Exception as exc:
+                _log.exception("Unhandled error in the TUI loop")
+                _system_message(f"Error: {exc}", _STYLE_ERROR, console)
 
     return 0
+
+
+def _banner_model_name(agent_dir: Path) -> str:
+    try:
+        return load_settings(agent_dir).model.name
+    except Exception as exc:
+        _log.warning("Could not read settings for the welcome banner", exc_info=exc)
+        return "unknown"

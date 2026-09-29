@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 echo "Starting Cud installation..."
 
@@ -27,7 +27,8 @@ if command -v pipx >/dev/null 2>&1; then
   pipx install --force "$REPO_URL"
 elif command -v uv >/dev/null 2>&1; then
   echo "Detected uv. Installing/updating Cud from GitHub..."
-  uv tool install --no-build --force "$REPO_URL"
+  # No --no-build: installing from a git+ URL requires building a wheel.
+  uv tool install --force "$REPO_URL"
 else
   echo "Error: Neither 'pipx' nor 'uv' is installed." >&2
   echo "Please install one of them to proceed." >&2
@@ -49,26 +50,54 @@ ICON_URL="https://raw.githubusercontent.com/arrase/cud/main/src/cud/gui/assets/i
 ICON_PATH="$HOME/.local/share/icons/cud.png"
 DESKTOP_FILE="$HOME/.local/share/applications/cud.desktop"
 
-echo "Downloading icon..."
-curl --proto "=https" -fsSL "$ICON_URL" -o "$ICON_PATH" || echo "Warning: Failed to download icon." >&2
+# pipx/uv install the shims here and only add this to *interactive* rc files, so
+# a non-interactive shell (curl | bash, CI) would not find them via PATH.
+resolve_shim() {
+  local name="$1"
+  local found
+  found="$(command -v "$name" || true)"
+  if [[ -z "$found" && -x "$HOME/.local/bin/$name" ]]; then
+    found="$HOME/.local/bin/$name"
+  fi
+  printf '%s' "$found"
+}
 
-echo "Creating .desktop file..."
-cat > "$DESKTOP_FILE" << EOF
+CUD_BIN="$(resolve_shim cud)"
+CUD_GUI_BIN="$(resolve_shim cud-gui)"
+
+echo "Downloading icon..."
+if ! curl --proto "=https" -fsSL "$ICON_URL" -o "$ICON_PATH"; then
+  echo "Warning: failed to download the icon; the launcher will show a default one." >&2
+  rm -f "$ICON_PATH"
+fi
+
+if [[ -z "$CUD_GUI_BIN" ]]; then
+  echo "Warning: 'cud-gui' not found on PATH; skipping the desktop launcher." >&2
+else
+  echo "Creating .desktop file..."
+  cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
 Name=Cud
 Comment=Local multi-agent framework
-Exec=$HOME/.local/bin/cud-gui
+Exec=$CUD_GUI_BIN
 Icon=cud
 Terminal=false
 Type=Application
 Categories=Development;Utility;
 EOF
 
-# Update desktop database to refresh the applications menu
-if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "$HOME/.local/share/applications" || true
+  # Update desktop database to refresh the applications menu
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$HOME/.local/share/applications" || true
+  fi
 fi
 
 echo ""
 echo "✨ Cud has been successfully installed!"
+if [[ -z "$CUD_BIN" ]]; then
+  # Not fatal: the package installed fine, but this shell cannot see its shim.
+  echo ""
+  echo "Note: 'cud' is not on this shell's PATH. Add its bin directory, e.g.:" >&2
+  echo "  export PATH=\"\$HOME/.local/bin:\$PATH\"" >&2
+fi
 echo "You can now run 'cud --help' to get started."

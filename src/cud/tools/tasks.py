@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from cud.config.paths import agent_home
 from cud.tools._frontmatter import parse_frontmatter
 
 console = Console()
+_log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,9 +32,6 @@ class TaskCard:
     prompt: str
 
 
-PeriodicTask = TaskCard
-
-
 def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
     """Scan ``tasks_dir`` for ``*/TASK.md`` files and return parsed cards."""
     if not tasks_dir.exists():
@@ -41,10 +40,11 @@ def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
     for task_file in sorted(tasks_dir.glob("*/TASK.md")):
         try:
             card = _parse_task_file(task_file)
-            if card is not None:
-                cards.append(card)
         except Exception:
+            _log.warning("Skipping unreadable task file %s", task_file, exc_info=True)
             continue
+        if card is not None:
+            cards.append(card)
     return cards
 
 
@@ -52,15 +52,18 @@ def _parse_task_file(task_file: Path) -> TaskCard | None:
     text = task_file.read_text(encoding="utf-8")
     metadata, body = parse_frontmatter(text)
     name = metadata.get("name") or task_file.parent.name
-    schedule = metadata.get("schedule")
+    schedule = str(metadata.get("schedule") or "").strip()
     if not schedule:
         return None  # A task without schedule is invalid.
+    if not croniter.is_valid(schedule):
+        _log.warning("Task '%s': invalid cron expression %r; skipping", task_file, schedule)
+        return None
     prompt = body.strip()
     if not prompt:
         return None  # A task without prompt is useless.
     return TaskCard(
-        name=name,
-        description=metadata.get("description", ""),
+        name=str(name),
+        description=str(metadata.get("description") or ""),
         schedule=schedule,
         channel_id=_int_or_none(metadata.get("channel_id")),
         user_id=_int_or_none(metadata.get("user_id")),
@@ -79,6 +82,18 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def next_run(schedule: str, now: datetime) -> datetime | None:
+    """Return the next fire time for *schedule*, or ``None`` if it never fires.
+
+    Single source of truth for cron evaluation shared by the scheduler, the CLI
+    and the GUI, so an unschedulable expression is handled identically everywhere.
+    """
+    try:
+        return croniter(schedule, now).get_next(datetime)
+    except (ValueError, KeyError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # CLI Commands
 # ---------------------------------------------------------------------------
@@ -91,22 +106,19 @@ def register_task_commands(sub: argparse._SubParsersAction) -> None:
     task_list.set_defaults(func=cmd_task_list)
 
 
-def _task_destination(task: PeriodicTask) -> str:
-    if task.channel_id:
+def _task_destination(task: TaskCard) -> str:
+    if task.channel_id is not None:
         return f"channel:{task.channel_id}"
-    if task.user_id:
+    if task.user_id is not None:
         return f"DM:{task.user_id}"
     return "none"
 
 
-def _task_next_run(task: PeriodicTask, now: datetime) -> str:
+def _task_next_run(task: TaskCard, now: datetime) -> str:
     if not task.enabled:
         return "—"
-    try:
-        cron = croniter(task.schedule, now)
-        return cron.get_next(datetime).strftime("%Y-%m-%d %H:%M UTC")
-    except Exception:
-        return "invalid cron"
+    upcoming = next_run(task.schedule, now)
+    return upcoming.strftime("%Y-%m-%d %H:%M UTC") if upcoming else "invalid cron"
 
 
 def cmd_task_list(args: argparse.Namespace) -> int:
@@ -117,7 +129,7 @@ def cmd_task_list(args: argparse.Namespace) -> int:
         console.print(f"No tasks found in {tasks_dir}")
     else:
         table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for task in tasks:
             table.add_row(
                 task.name,

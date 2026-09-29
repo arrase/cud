@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sqlite3
+import urllib.parse
 from collections import defaultdict
 from collections.abc import Callable, Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +25,11 @@ class HistoryError(RuntimeError):
 @contextlib.contextmanager
 def connect_history(db_path: Path) -> Iterator[sqlite3.Connection]:
     """Open the history database in read-only mode."""
+    # Percent-encode the path: a raw `?` or `#` in it would silently change
+    # the target of the `file:` URI.
+    uri = f"file:{urllib.parse.quote(str(db_path.resolve()))}?mode=ro"
     try:
-        conn = sqlite3.connect(f"file:{db_path.resolve()}?mode=ro", uri=True)
+        conn = sqlite3.connect(uri, uri=True)
     except sqlite3.Error as e:
         raise HistoryError(f"Failed to open history database {db_path}: {e}") from e
     try:
@@ -36,16 +40,19 @@ def connect_history(db_path: Path) -> Iterator[sqlite3.Connection]:
 
 def format_iso_timestamp(ts: str) -> str:
     """Format ISO timestamp into a human-readable UTC string (YYYY-MM-DD HH:MM UTC)."""
-    dt = datetime.fromisoformat(ts)
+    try:
+        dt = datetime.fromisoformat(ts)
+    except (TypeError, ValueError) as exc:
+        raise HistoryError(f"Invalid checkpoint timestamp {ts!r}") from exc
     if dt.tzinfo is not None:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
 def extract_text(content: Any, *, sep: str = " ") -> str:
     """Convert agent payload content into plain text."""
     if isinstance(content, str):
-        return content
+        return content.strip()
     if content is None:
         return ""
     if isinstance(content, (list, tuple)):
@@ -59,10 +66,14 @@ def extract_text(content: Any, *, sep: str = " ") -> str:
 
 
 def _message_role_and_text(msg: Any) -> tuple[str, str]:
-    """Extract role and stripped text content from a message."""
-    role = msg.type if hasattr(msg, "type") else msg["role"]
-    content = msg.content if hasattr(msg, "content") else msg["content"]
-    return str(role), extract_text(content).strip()
+    """Extract role and stripped text content from a message object or dict."""
+    if isinstance(msg, dict):
+        role = msg.get("type") or msg.get("role")
+        content = msg.get("content")
+    else:
+        role = getattr(msg, "type", None)
+        content = getattr(msg, "content", None)
+    return str(role or ""), extract_text(content)
 
 
 def _extract_user_prompts(cursor: sqlite3.Cursor) -> list[str]:
@@ -107,15 +118,20 @@ def _read_history_checkpoints(cursor: sqlite3.Cursor, exclude_thread_id: str) ->
         cursor.execute("SELECT thread_id, type, checkpoint FROM checkpoints ORDER BY rowid ASC")
     for tid, typ, chk in cursor.fetchall():
         c = _serializer.loads_typed((typ, chk))
-        thread_timestamps[tid] = str(c["ts"])
+        try:
+            thread_timestamps[tid] = str(c["ts"])
+        except (TypeError, KeyError) as exc:
+            raise HistoryError(f"Checkpoint for thread {tid!r} has no timestamp") from exc
     return thread_timestamps
 
 
 def _read_history_messages(cursor: sqlite3.Cursor, exclude_thread_id: str) -> defaultdict[str, list[Any]]:
     thread_messages: defaultdict[str, list[Any]] = defaultdict(list)
+    seen: defaultdict[str, set[str]] = defaultdict(set)
     if exclude_thread_id:
         cursor.execute(
-            "SELECT thread_id, type, value FROM writes WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
+            "SELECT thread_id, type, value FROM writes "
+            "WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
             (exclude_thread_id,),
         )
     else:
@@ -124,10 +140,16 @@ def _read_history_messages(cursor: sqlite3.Cursor, exclude_thread_id: str) -> de
         )
     for tid, typ, val in cursor.fetchall():
         msgs = _serializer.loads_typed((typ, val))
-        if isinstance(msgs, list):
-            thread_messages[tid].extend(msgs)
-        else:
-            thread_messages[tid].append(msgs)
+        for msg in (msgs if isinstance(msgs, list) else [msgs]):
+            # A checkpoint may rewrite the full list rather than a delta, so
+            # the same message id can appear in several rows.
+            msg_id = str(msg.get("id") or id(msg)) if isinstance(msg, dict) else str(
+                getattr(msg, "id", None) or id(msg)
+            )
+            if msg_id in seen[tid]:
+                continue
+            seen[tid].add(msg_id)
+            thread_messages[tid].append(msg)
     return thread_messages
 
 
@@ -156,13 +178,14 @@ def load_past_conversations(
 
     conversations: dict[str, dict[str, Any]] = {}
     for tid, msgs in thread_messages.items():
-        if tid in thread_timestamps:
-            raw_ts = thread_timestamps[tid]
-            conversations[tid] = {
-                "timestamp": raw_ts,
-                "formatted_date": format_iso_timestamp(raw_ts),
-                "messages": msgs,
-            }
+        if tid not in thread_timestamps:
+            continue  # Orphan write with no checkpoint row: nothing to anchor it to.
+        raw_ts = thread_timestamps[tid]
+        conversations[tid] = {
+            "timestamp": raw_ts,
+            "formatted_date": format_iso_timestamp(raw_ts),
+            "messages": msgs,
+        }
 
     return conversations
 
@@ -183,11 +206,13 @@ def _extract_dialogue(msgs: list[Any]) -> list[tuple[str, str]]:
 
 
 def _score_conversation(data: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
+    """Score a conversation against *terms* and return the matching snippets."""
     dialogue = _extract_dialogue(data["messages"])
     formatted_date = data["formatted_date"]
 
     snippets: list[str] = []
-    match_count = sum(formatted_date.lower().count(t) for t in terms)
+    date_hits = sum(formatted_date.lower().count(t) for t in terms)
+    match_count = date_hits
 
     for role, text in dialogue:
         term_hits = sum(text.lower().count(t) for t in terms)
@@ -196,8 +221,10 @@ def _score_conversation(data: dict[str, Any], terms: list[str]) -> tuple[int, li
             if len(snippets) < 4:
                 snippets.append(_format_snippet(role, text))
 
-    if match_count > 0 and not snippets:
-        snippets = [_format_snippet(r, t) for r, t in dialogue[:2]]
+    if date_hits and not snippets:
+        # Only the date matched: showing unrelated dialogue would look like a
+        # content match to the model, so return a date-only marker instead.
+        snippets = [f"[Date only, no matching text]: {formatted_date}"]
 
     return match_count, snippets
 
@@ -210,7 +237,7 @@ def search_past_conversations_in_db(
 ) -> list[dict[str, Any]]:
     """Search messages across past conversation sessions matching query keywords."""
     terms = [t.lower() for t in query.split()]
-    if not terms:
+    if not terms or limit <= 0:
         return []
 
     conversations = load_past_conversations(db_path, exclude_thread_id=exclude_thread_id)
@@ -230,7 +257,7 @@ def search_past_conversations_in_db(
                 }
             )
 
-    scored_results.sort(key=lambda item: (item["score"], item["timestamp"]), reverse=True)
+    scored_results.sort(key=lambda item: (item["score"], item["formatted_date"]), reverse=True)
     return scored_results[:limit]
 
 
@@ -279,5 +306,4 @@ def create_search_past_conversations_tool(
         except HistoryError as exc:
             return f"Error searching past conversations: {exc}"
         return format_past_conversations_context(results)
-
     return search_past_conversations

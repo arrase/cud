@@ -92,3 +92,70 @@ def test_delete_agent_success(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     deleted = delete_agent("agent-to-delete", yes=True)
     assert deleted == target
     assert not target.exists()
+
+
+def test_create_agent_rolls_back_on_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Regression: a mid-loop failure used to leave a half-built agent that
+    list_agents() then reported as a real, permanently broken agent."""
+    import cud.config.scaffold as scaffold
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(scaffold, "_copy_bundled_skills", boom)
+
+    with pytest.raises(OSError, match="disk full"):
+        scaffold.create_agent("halfbaked")
+
+    agents_root = tmp_path / "agents"
+    assert not (agents_root / "halfbaked").exists()
+    assert scaffold.list_agents() == []
+
+
+def test_create_agent_does_not_delete_existing_agent_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed --overwrite must not rmtree the user's existing agent."""
+    import cud.config.scaffold as scaffold
+
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    target = scaffold.create_agent("keeper")
+    (target / "custom.md").write_text("mine", encoding="utf-8")
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("nope")
+
+    monkeypatch.setattr(scaffold, "_copy_bundled_skills", boom)
+    with pytest.raises(OSError):
+        scaffold.create_agent("keeper", overwrite=True)
+
+    assert (target / "custom.md").read_text(encoding="utf-8") == "mine"
+
+
+def test_init_history_db_closes_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: `with sqlite3.connect(...)` manages the transaction, not the
+    connection, so the handle leaked if a statement raised."""
+    import sqlite3
+
+    from cud.config.scaffold import _init_history_db
+
+    opened: list[sqlite3.Connection] = []
+    real_connect = sqlite3.connect
+
+    def spy(path, *args, **kwargs):
+        conn = real_connect(path, *args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    monkeypatch.setattr("cud.config.scaffold.sqlite3.connect", spy)
+    _init_history_db(tmp_path / "history.db")
+    assert opened, "the spy should have intercepted connect()"
+    assert all(_is_closed(conn) for conn in opened)
+
+
+def _is_closed(conn: sqlite3.Connection) -> bool:
+    try:
+        conn.execute("SELECT 1")
+    except sqlite3.ProgrammingError:
+        return True
+    return False
