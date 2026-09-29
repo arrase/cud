@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,10 @@ from cud.gui.core.styles import (
     monospace_font,
 )
 from cud.tools._frontmatter import parse_frontmatter, render_frontmatter
-from cud.tools.skills import discover_skills
+from cud.tools.skills import discover_skills, valid_dir_name
+from cud.tools.skills import is_safe_dir_name as _is_safe_dir_name
+
+_log = logging.getLogger(__name__)
 
 
 class SkillsTab(QWidget):
@@ -46,6 +50,7 @@ class SkillsTab(QWidget):
         self.agent_dir: Path | None = None
         self._skills_data: list[dict[str, Any]] = []
         self._selected_index: int = -1
+        self._deleted_dirs: set[str] = set()
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 16, 16, 16)
@@ -57,8 +62,8 @@ class SkillsTab(QWidget):
         self.main_layout.addWidget(self.title_label)
 
         self.desc_label = QLabel(
-            "Skills are Python modules or scripts packaged within the agent's workspace "
-            "that provide additional capabilities to solve problems."
+            "Skills are Markdown instruction folders under the agent's workspace. "
+            "Each folder contains a SKILL.md that grants the agent a new capability."
         )
         self.desc_label.setWordWrap(True)
         self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA; line-height: 1.4;")
@@ -134,36 +139,54 @@ class SkillsTab(QWidget):
         self.agent_dir = agent_dir
         self._skills_data.clear()
         self._selected_index = -1
+        self._deleted_dirs = set()
 
         skills_dir = agent_dir / "workspace" / "skills"
         skills = discover_skills(skills_dir)
 
         for skill in skills:
-            try:
-                raw_text = skill.path.read_text(encoding="utf-8")
-                metadata, body = parse_frontmatter(raw_text)
-            except Exception:
-                metadata, body = {}, ""
-            self._skills_data.append({
+            entry: dict[str, Any] = {
                 "name": skill.name,
                 "description": skill.description,
                 "dir_name": skill.path.parent.name,
-                "body": body,
-                "metadata": metadata,
-            })
+                "body": "",
+                "metadata": {},
+                "unreadable": False,
+            }
+            try:
+                metadata, body = parse_frontmatter(skill.path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                # Keep the row so it is visible, but never overwrite the file:
+                # a transient read error must not destroy the skill body.
+                entry["unreadable"] = True
+            else:
+                entry["metadata"] = metadata
+                entry["body"] = body
+            self._skills_data.append(entry)
 
         self._refresh_table()
 
-    def save_data(self, agent_dir: Path) -> None:
-        """Write all in-memory skill data back to disk as SKILL.md files."""
+    def save_data(self, agent_dir: Path) -> list[str]:
+        """Write all in-memory skill data back to disk as SKILL.md files.
+
+        Returns the directory names that could not be written, so the caller can
+        warn instead of silently losing the entry.
+        """
         skills_dir = agent_dir / "workspace" / "skills"
         skills_dir.mkdir(parents=True, exist_ok=True)
-
-        # Track which directories we write to, so we can detect deletions
-        written_dirs: set[str] = set()
+        skipped: list[str] = []
+        live_dirs: set[str] = set()
 
         for entry in self._skills_data:
+            if entry["unreadable"]:
+                continue
             dir_name = entry["dir_name"]
+            if not _is_safe_dir_name(dir_name):
+                # Pre-existing on-disk name we cannot safely write to; leave the
+                # original file untouched rather than aborting the whole save.
+                skipped.append(str(dir_name))
+                continue
+            live_dirs.add(dir_name)
             skill_dir = skills_dir / dir_name
             skill_dir.mkdir(parents=True, exist_ok=True)
 
@@ -173,18 +196,16 @@ class SkillsTab(QWidget):
 
             content = render_frontmatter(metadata, entry["body"])
             (skill_dir / "SKILL.md").write_text(content, encoding="utf-8")
-            written_dirs.add(dir_name)
 
-        # Remove skill directories that were deleted from memory, but skip
-        # internal directories like __pycache__ or hidden dot-dirs.
-        if skills_dir.exists():
-            for existing in skills_dir.iterdir():
-                if not existing.is_dir():
-                    continue
-                if existing.name.startswith(("__", ".")):
-                    continue
-                if existing.name not in written_dirs:
-                    shutil.rmtree(existing)
+        # Only remove directories the user explicitly deleted, and never one that
+        # was re-created in this same session. Sweeping "everything not in
+        # memory" would destroy skills whose discovery failed.
+        for dir_name in self._deleted_dirs - live_dirs:
+            target = skills_dir / dir_name
+            if target.is_dir() and not target.is_symlink():
+                shutil.rmtree(target)
+        self._deleted_dirs = set()
+        return skipped
 
     def _refresh_table(self) -> None:
         """Regenerate the table from in-memory data."""
@@ -199,8 +220,14 @@ class SkillsTab(QWidget):
             name_item.setFont(font_bold)
             self.table.setItem(idx, 0, name_item)
 
-            desc_item = QTableWidgetItem(entry["description"])
+            desc_item = QTableWidgetItem(
+                "[unreadable — will not be overwritten] " + entry["description"]
+                if entry["unreadable"]
+                else entry["description"]
+            )
             desc_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+            if entry["unreadable"]:
+                desc_item.setForeground(QColor("#E74C3C"))
             self.table.setItem(idx, 1, desc_item)
 
             path_str = f"workspace/skills/{entry['dir_name']}"
@@ -247,11 +274,22 @@ class SkillsTab(QWidget):
             return
 
         name = name.strip()
-        existing_dirs = {e["dir_name"] for e in self._skills_data}
         dir_name = name.lower().replace(" ", "-")
+        try:
+            # The name becomes a path segment, so it must not escape the
+            # skills directory.
+            valid_dir_name(dir_name)
+        except ValueError as exc:
+            QMessageBox.critical(self, "Invalid Name", f"Cannot create skill:\n\n{exc}")
+            return
+
+        existing_dirs = {e["dir_name"] for e in self._skills_data}
         if dir_name in existing_dirs:
             QMessageBox.warning(self, "Duplicate", f"A skill with directory name '{dir_name}' already exists.")
             return
+
+        # Re-creating a previously deleted name: drop the pending deletion.
+        self._deleted_dirs.discard(dir_name)
 
         self._skills_data.append({
             "name": name,
@@ -259,12 +297,12 @@ class SkillsTab(QWidget):
             "dir_name": dir_name,
             "body": "",
             "metadata": {"name": name, "description": "New skill"},
+            "unreadable": False,
         })
         self._refresh_table()
 
         # Select the newly added row
-        last_row = len(self._skills_data) - 1
-        self.table.selectRow(last_row)
+        self.table.selectRow(len(self._skills_data) - 1)
 
     def _on_delete_clicked(self) -> None:
         """Delete the currently selected skill."""
@@ -281,6 +319,7 @@ class SkillsTab(QWidget):
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm == QMessageBox.StandardButton.Yes:
+            self._deleted_dirs.add(entry["dir_name"])
             del self._skills_data[self._selected_index]
             self._refresh_table()
 

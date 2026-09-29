@@ -7,7 +7,9 @@ from typing import Any
 
 import yaml
 
-_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n((?:(?!^---)[^\r\n]*\r?\n)*)---[ \t]*\r?\n", re.MULTILINE)
+# The trailing newline after the closing '---' is optional so a file that ends
+# exactly at the delimiter is still recognised as having frontmatter.
+_FRONTMATTER_RE = re.compile(r"^---[ \t]*\r?\n((?:(?!^---)[^\r\n]*\r?\n)*)---[ \t]*(?:\r?\n|\Z)", re.MULTILINE)
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:

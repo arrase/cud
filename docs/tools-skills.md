@@ -10,7 +10,7 @@ Every Cud agent comes equipped out of the box with standard runtime tools powere
 
 ### 1. Shell Session Execution
 Agents execute commands via the `LocalShellBackend`.
-* **Execution Boundary**: By default, shell commands are confined to the agent's `workspace/` folder (`virtual_mode=true`). If `runtime.allow_traversal` is set to `true` in `settings.yaml`, directory traversal outside `workspace/` is permitted.
+* **Execution Boundary**: Shell commands run through the host shell. By default `runtime.allow_traversal` is `true`, so the agent is **not** sandboxed to `workspace/` (`virtual_mode=false`). Set it to `false` in `settings.yaml` to confine commands to the agent's `workspace/` folder.
 * **Stateful Sessions**: Shell sessions persist working state across sequential commands within an interaction.
 
 ### 2. Filesystem Operations

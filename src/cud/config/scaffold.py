@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import sqlite3
 from importlib.resources import files
@@ -19,15 +20,27 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
     if template not in (None, "default"):
         raise ValueError("only the default template is available")
     target = agent_home(name)
-    if target.exists() and not overwrite:
+    existed = target.exists()
+    if existed and not overwrite:
         raise FileExistsError(f"agent already exists: {target}")
 
+    try:
+        _populate_agent(target, template_root=files("cud.templates"), overwrite=overwrite)
+    except BaseException:
+        # Never leave a half-built agent behind: list_agents() would report it
+        # as a real agent that then fails on every load.  Pre-existing agents
+        # are left alone — rolling those back would destroy user data.
+        if not existed:
+            shutil.rmtree(target, ignore_errors=True)
+        raise
+    return target
+
+
+def _populate_agent(target: Path, *, template_root: Any, overwrite: bool) -> None:
     target.mkdir(parents=True, exist_ok=True)
     workspace_dir = target / "workspace"
-    workspace_dir.mkdir(exist_ok=True)
-    (workspace_dir / "skills").mkdir(exist_ok=True)
-    (workspace_dir / "tasks").mkdir(exist_ok=True)
-    template_root = files("cud.templates")
+    for name in ("", "skills", "tasks"):
+        (workspace_dir / name).mkdir(parents=True, exist_ok=True)
     for filename in TEMPLATE_NAMES:
         destination = target / filename
         if destination.exists() and not overwrite:
@@ -36,20 +49,13 @@ def create_agent(name: str, *, template: str | None = None, overwrite: bool = Fa
         destination.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     _copy_bundled_skills(workspace_dir / "skills", template_root, overwrite=overwrite)
     _init_history_db(target / "history.db")
-    return target
 
 
 def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: bool = False) -> None:
     """Copy skill templates shipped with the package into the agent workspace."""
     bundled = template_root / "skills"
-    try:
-        entries = list(bundled.iterdir())
-    except Exception:
-        return
-    for skill in entries:
-        if skill.name == "__pycache__":
-            continue
-        if not _is_directory_resource(skill):
+    for skill in bundled.iterdir():
+        if skill.name == "__pycache__" or not _is_directory_resource(skill):
             continue
         dest = skills_dir / skill.name
         if dest.exists() and not overwrite:
@@ -58,7 +64,11 @@ def _copy_bundled_skills(skills_dir: Path, template_root: Any, *, overwrite: boo
         for child in skill.iterdir():
             if child.name.endswith(".py") or child.name == "__pycache__":
                 continue
-            (dest / child.name).write_text(child.read_text(encoding="utf-8"), encoding="utf-8")
+            # Bundled skills are markdown, but a future template may ship binary
+            # assets: copy those verbatim instead of failing the whole agent.
+            if _is_directory_resource(child):
+                continue
+            (dest / child.name).write_bytes(child.read_bytes())
 
 
 def _is_directory_resource(resource: Any) -> bool:
@@ -67,12 +77,13 @@ def _is_directory_resource(resource: Any) -> bool:
 
 
 def _init_history_db(path: Path) -> None:
-    with sqlite3.connect(path) as conn:
+    # `with sqlite3.connect(...)` only manages the transaction, not the
+    # connection, so close explicitly or the file handle leaks on error.
+    with contextlib.closing(sqlite3.connect(path)) as conn, conn:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
             "CREATE TABLE IF NOT EXISTS cud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
         )
-    conn.close()
 
 
 def list_agents() -> list[Path]:

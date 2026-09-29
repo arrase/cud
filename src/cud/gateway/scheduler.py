@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, cast
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from croniter import croniter
+import discord
 from discord.abc import Messageable
 
 from cud.gateway._discord_utils import split_message
-from cud.tools.tasks import TaskCard, discover_tasks
+from cud.tools.tasks import TaskCard, discover_tasks, next_run
 
 if TYPE_CHECKING:
     from cud.gateway.discord_adapter import DiscordGateway
@@ -58,7 +58,7 @@ class TaskScheduler:
                     self._reload_event.clear()
                     tasks = self._load_tasks()
                     continue
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # Timeout expired — time to execute.
                     pass
 
@@ -77,14 +77,17 @@ class TaskScheduler:
         return [t for t in discover_tasks(tasks_dir) if t.enabled]
 
     async def _execute(self, task: TaskCard) -> None:
+        # Resolve the destination first: a cache miss would otherwise burn a
+        # full agent run and then throw the result away.
+        target = await self._resolve_target(task)
+        if target is None:
+            _log.warning("Task '%s': no valid target (channel_id or user_id), skipping", task.name)
+            return
+
         thread_id = f"task-{uuid4().hex}"
         runtime = self.gateway.session(thread_id)
         try:
-            response = await runtime.invoke(task.prompt, thread_id=thread_id)
-            target = await self._resolve_target(task)
-            if target is None:
-                _log.warning("Task '%s': no valid target (channel_id or user_id), skipping output", task.name)
-                return
+            response = await runtime.invoke(task.prompt)
             for chunk in split_message(response.content):
                 await target.send(chunk)
         except Exception:
@@ -98,16 +101,21 @@ class TaskScheduler:
         bot = self.gateway.bot
         if bot is None:
             return None
-        if task.channel_id:
-            channel = bot.get_channel(task.channel_id)
-            if channel is not None:
-                return cast(Messageable, channel)
-        if task.user_id:
+        if task.channel_id is not None:
             try:
-                user = await bot.fetch_user(task.user_id)
-                return user
-            except Exception:
-                return None
+                channel = bot.get_channel(task.channel_id) or await bot.fetch_channel(task.channel_id)
+            except (discord.NotFound, discord.HTTPException):
+                _log.warning("Task '%s': cannot fetch channel %s", task.name, task.channel_id, exc_info=True)
+                channel = None
+            # CategoryChannel and friends are not Messageable; sending would AttributeError.
+            if isinstance(channel, discord.abc.Messageable):
+                return channel
+            _log.warning("Task '%s': channel %s cannot receive messages", task.name, task.channel_id)
+        if task.user_id is not None:
+            try:
+                return await bot.fetch_user(task.user_id)
+            except (discord.NotFound, discord.HTTPException):
+                _log.warning("Task '%s': cannot DM user %s", task.name, task.user_id, exc_info=True)
         return None
 
 
@@ -116,21 +124,19 @@ def _next_scheduled(tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
     if not tasks:
         return None, 0.0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     best_task: TaskCard | None = None
     best_delay = float("inf")
 
     for task in tasks:
-        try:
-            cron = croniter(task.schedule, now)
-            next_dt = cron.get_next(datetime)
-            delay = (next_dt - now).total_seconds()
-            if delay < best_delay:
-                best_delay = delay
-                best_task = task
-        except (ValueError, KeyError):
-            _log.debug("Task '%s': invalid cron expression '%s', skipping", task.name, task.schedule)
+        upcoming = next_run(task.schedule, now)
+        if upcoming is None:
+            _log.warning("Task '%s': invalid cron expression %r, skipping", task.name, task.schedule)
             continue
+        delay = (upcoming - now).total_seconds()
+        if delay < best_delay:
+            best_delay = delay
+            best_task = task
 
     if best_task is None:
         return None, 0.0

@@ -12,6 +12,7 @@ from cud.config.settings import (
     load_settings,
     save_settings,
     validate_settings,
+    validate_subagents,
 )
 
 
@@ -98,7 +99,7 @@ def test_save_and_load_settings(tmp_path: Path) -> None:
 
 
 def test_load_settings_missing_file(tmp_path: Path) -> None:
-    with pytest.raises(FileNotFoundError, match="settings.yaml not found"):
+    with pytest.raises(FileNotFoundError, match=r"settings\.yaml not found"):
         load_settings(tmp_path)
 
 
@@ -117,21 +118,21 @@ def test_validate_settings_invalid_provider() -> None:
 def test_validate_settings_missing_name() -> None:
     settings = Settings()
     settings.model.name = ""
-    with pytest.raises(ValueError, match="model.name is required"):
+    with pytest.raises(ValueError, match=r"model.name is required"):
         validate_settings(settings)
 
 
 def test_validate_settings_invalid_context_window() -> None:
     settings = Settings()
     settings.model.context_window = 0
-    with pytest.raises(ValueError, match="model.context_window must be positive"):
+    with pytest.raises(ValueError, match=r"model\.context_window must be positive"):
         validate_settings(settings)
 
 
 def test_validate_settings_negative_temperature() -> None:
     settings = Settings()
     settings.model.temperature = -0.1
-    with pytest.raises(ValueError, match="model.temperature must be non-negative"):
+    with pytest.raises(ValueError, match=r"model\.temperature must be non-negative"):
         validate_settings(settings)
 
 
@@ -143,3 +144,146 @@ def test_validate_settings_invalid_gateway_provider() -> None:
         ValueError, match="v1 supports only the discord gateway provider"
     ):
         validate_settings(settings)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: a config that load_settings would reject must never persist
+# ---------------------------------------------------------------------------
+
+
+def test_save_settings_rejects_invalid_config(tmp_path: Path) -> None:
+    """Regression: saving an invalid config bricked the agent on next load."""
+    settings = Settings()
+    settings.gateway.provider = "telegram"
+    settings.gateway.token = "tok"
+    with pytest.raises(ValueError, match="discord gateway provider"):
+        save_settings(tmp_path, settings)
+    assert not (tmp_path / "settings.yaml").exists()
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("model:\n  context_window: abc\n", "must be a number"),
+        ("model:\n  temperature: 'hot'\n", "must be a number"),
+        ("model: ollama\n", "must be a mapping"),
+        ("model:\n  context_window: true\n", "must be a number"),
+        ("- a\n- b\n", "must contain a mapping"),
+        ("subagents: not-a-list\n", "must be a list"),
+        ("model: [unclosed\n", "not valid YAML"),
+    ],
+)
+def test_load_settings_reports_malformed_input(tmp_path: Path, body: str, message: str) -> None:
+    """Regression: these used to surface as opaque TypeError/AttributeError."""
+    (tmp_path / "settings.yaml").write_text(body, encoding="utf-8")
+    with pytest.raises(ValueError, match=message):
+        load_settings(tmp_path)
+
+
+def test_load_settings_accepts_yaml_int_temperature(tmp_path: Path) -> None:
+    (tmp_path / "settings.yaml").write_text("model:\n  temperature: 1\n", encoding="utf-8")
+    assert load_settings(tmp_path).model.temperature == 1.0
+
+
+def test_save_settings_is_atomic_and_private(tmp_path: Path) -> None:
+    settings = Settings()
+    settings.gateway.token = "super-secret"
+    save_settings(tmp_path, settings)
+
+    path = tmp_path / "settings.yaml"
+    assert oct(path.stat().st_mode)[-3:] == "600", "the file holds a Discord token"
+    assert not list(tmp_path.glob(".settings.yaml.*")), "temp file must be renamed away"
+
+
+def test_save_settings_does_not_truncate_on_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: a plain write_text truncates the file before writing, so a
+    failure mid-write left corrupt YAML on disk."""
+    save_settings(tmp_path, Settings())
+    path = tmp_path / "settings.yaml"
+    before = path.read_text(encoding="utf-8")
+
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr("os.fdopen", boom)
+    with pytest.raises(OSError, match="disk full"):
+        save_settings(tmp_path, Settings())
+
+    assert path.read_text(encoding="utf-8") == before
+    assert not list(tmp_path.glob(".settings.yaml.*")), "temp file must be cleaned up"
+
+
+def test_atomic_write_cleans_up_when_fsync_target_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from cud.config.settings import _atomic_write
+
+    target = tmp_path / "out.txt"
+    monkeypatch.setattr(Path, "replace", boom)
+    with pytest.raises(OSError):
+        _atomic_write(target, "data")
+    assert not target.exists()
+    assert not list(tmp_path.glob(".out.txt.*"))
+
+
+def boom(*_args: object, **_kwargs: object) -> None:
+    raise OSError("rename failed")
+
+
+def test_validate_subagents_is_writer_side_only() -> None:
+    """Subagent checks must not stop an otherwise startable agent from booting."""
+    settings = Settings()
+    settings.subagents = [SubAgentSettings(name="a"), SubAgentSettings(name="a")]
+    with pytest.raises(ValueError, match="duplicate subagent name"):
+        validate_subagents(settings)
+
+    settings.subagents = [SubAgentSettings(name="", description="d")]
+    with pytest.raises(ValueError, match=r"subagent\.name is required"):
+        validate_subagents(settings)
+
+    settings.subagents = [SubAgentSettings(name="a", context_window=-1)]
+    with pytest.raises(ValueError, match="must not be negative"):
+        validate_subagents(settings)
+
+    # load_settings only enforces the start-up invariants.
+    settings.subagents = [SubAgentSettings(name="a"), SubAgentSettings(name="a")]
+    validate_settings(settings)
+
+
+def test_save_settings_rejects_bad_subagents(tmp_path: Path) -> None:
+    settings = Settings()
+    settings.subagents = [SubAgentSettings(name=""), SubAgentSettings(name="a")]
+    with pytest.raises(ValueError, match=r"subagent\.name is required"):
+        save_settings(tmp_path, settings)
+
+
+def test_settings_yaml_without_unknown_keys_still_loads(tmp_path: Path) -> None:
+    (tmp_path / "settings.yaml").write_text(
+        "model:\n  name: qwen\n  future_option: 1\n", encoding="utf-8"
+    )
+    assert load_settings(tmp_path).model.name == "qwen"
+
+
+def test_load_settings_treats_null_subagent_context_as_inherit(tmp_path: Path) -> None:
+    """Regression: `context_window:` must not hard-fail the whole agent."""
+    (tmp_path / "settings.yaml").write_text(
+        "subagents:\n  - name: a\n    context_window:\n", encoding="utf-8"
+    )
+    assert load_settings(tmp_path).subagents[0].context_window == 0
+
+
+def test_load_settings_rejects_non_list_mcp_servers(tmp_path: Path) -> None:
+    (tmp_path / "settings.yaml").write_text(
+        "subagents:\n  - name: a\n    mcp_servers: 5\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="'mcp_servers' must be a list"):
+        load_settings(tmp_path)
+
+
+def test_save_settings_rejects_non_integer_subagent_context(tmp_path: Path) -> None:
+    settings = Settings()
+    settings.subagents = [SubAgentSettings(name="a", context_window=None)]  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="must be an integer"):
+        save_settings(tmp_path, settings)

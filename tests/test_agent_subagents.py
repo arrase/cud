@@ -1,5 +1,4 @@
-from contextlib import AsyncExitStack
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -30,13 +29,12 @@ def test_resolve_env_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _resolve_env({"SECRET": "${MISSING_ENV_VAR}"}) is None
 
 
-def test_build_spec_minimal() -> None:
+@pytest.mark.anyio
+async def test_build_spec_minimal() -> None:
     sa = SubAgentSettings(name="worker", description="Does work")
     model_settings = ModelSettings(name="qwen", base_url="http://localhost:11434")
-    exit_stack = AsyncExitStack()
-    run_async = MagicMock()
 
-    spec = _build_spec(sa, model_settings=model_settings, exit_stack=exit_stack, run_async=run_async)
+    spec = await _build_spec(sa, model_settings=model_settings)
     assert spec["name"] == "worker"
     assert spec["description"] == "Does work"
     assert spec["system_prompt"] == "Does work"
@@ -45,7 +43,8 @@ def test_build_spec_minimal() -> None:
     assert "tools" not in spec
 
 
-def test_build_spec_custom_model_and_skills() -> None:
+@pytest.mark.anyio
+async def test_build_spec_custom_model_and_skills() -> None:
     sa = SubAgentSettings(
         name="specialist",
         description="A specialist",
@@ -55,10 +54,8 @@ def test_build_spec_custom_model_and_skills() -> None:
         skills_paths=["./skills/search", "skills/calc"],
     )
     model_settings = ModelSettings(name="qwen", base_url="http://localhost:11434")
-    exit_stack = AsyncExitStack()
-    run_async = MagicMock()
 
-    spec = _build_spec(sa, model_settings=model_settings, exit_stack=exit_stack, run_async=run_async)
+    spec = await _build_spec(sa, model_settings=model_settings)
     assert spec["name"] == "specialist"
     assert spec["description"] == "A specialist"
     assert spec["system_prompt"] == "You are a specialist."
@@ -67,66 +64,55 @@ def test_build_spec_custom_model_and_skills() -> None:
     assert spec["skills"] == ["/agent/skills/search", "/agent/skills/calc"]
 
 
-def test_load_mcp_tools_empty_servers() -> None:
-    exit_stack = AsyncExitStack()
-    run_async = MagicMock()
-    tools = _load_mcp_tools("test-agent", [], exit_stack, run_async)
-    assert tools == []
+@pytest.mark.anyio
+async def test_load_mcp_tools_empty_servers() -> None:
+    assert await _load_mcp_tools("test-agent", []) == []
 
 
-def test_load_mcp_tools_unresolved_env(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.anyio
+async def test_load_mcp_tools_unresolved_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("UNSET_VAR", raising=False)
     server = SubAgentMCPServer(name="srv", command="cmd", args=[], env={"KEY": "${UNSET_VAR}"})
-    exit_stack = AsyncExitStack()
-    run_async = MagicMock()
 
-    tools = _load_mcp_tools("test-agent", [server], exit_stack, run_async)
-    assert tools == []
-    run_async.assert_not_called()
+    loader = AsyncMock()
+    with patch("cud.agent.subagents.load_mcp_tools_for_servers", loader):
+        assert await _load_mcp_tools("test-agent", [server]) == []
+        loader.assert_not_called()
 
 
-def test_load_mcp_tools_success_with_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.anyio
+async def test_load_mcp_tools_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENV_KEY", "env_val")
     server = SubAgentMCPServer(name="srv", command="echo", args=["hi"], env={"KEY": "${ENV_KEY}"})
-    exit_stack = AsyncExitStack()
     dummy_tool = MagicMock()
-    cleanup_mock = MagicMock()
 
-    def fake_run_async(coro):
-        coro.close()
-        return [dummy_tool], cleanup_mock
-
-    tools = _load_mcp_tools("test-agent", [server], exit_stack, fake_run_async)
-    assert tools == [dummy_tool]
+    with patch("cud.agent.subagents.load_mcp_tools_for_servers", AsyncMock(return_value=[dummy_tool])):
+        assert await _load_mcp_tools("test-agent", [server]) == [dummy_tool]
 
 
-def test_load_mcp_tools_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.anyio
+async def test_load_mcp_tools_swallows_transport_errors() -> None:
+    """An unreachable MCP server must not prevent the agent from starting."""
     server = SubAgentMCPServer(name="srv", command="echo", args=[], env={})
-    exit_stack = AsyncExitStack()
-
-    def fake_run_async(coro):
-        coro.close()
-        raise RuntimeError("connection error")
-
-    tools = _load_mcp_tools("test-agent", [server], exit_stack, fake_run_async)
-    assert tools == []
+    with patch(
+        "cud.agent.subagents.load_mcp_tools_for_servers",
+        AsyncMock(side_effect=RuntimeError("connection error")),
+    ):
+        assert await _load_mcp_tools("test-agent", [server]) == []
 
 
-def test_build_subagents_integration() -> None:
+@pytest.mark.anyio
+async def test_build_subagents_integration() -> None:
     sa = SubAgentSettings(
         name="helper",
         description="Helper agent",
         mcp_servers=[SubAgentMCPServer(name="srv", command="echo", args=[], env={})],
     )
     model_settings = ModelSettings(name="qwen", base_url="http://localhost:11434")
-    exit_stack = AsyncExitStack()
     dummy_tool = MagicMock()
 
-    def fake_run_async(coro):
-        coro.close()
-        return [dummy_tool], None
-
-    subagents = build_subagents([sa], model_settings=model_settings, exit_stack=exit_stack, run_async=fake_run_async)
+    with patch("cud.agent.subagents.load_mcp_tools_for_servers", AsyncMock(return_value=[dummy_tool])):
+        subagents = await build_subagents([sa], model_settings=model_settings)
     assert len(subagents) == 1
     assert subagents[0]["name"] == "helper"
     assert subagents[0]["tools"] == [dummy_tool]

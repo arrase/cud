@@ -11,7 +11,6 @@ from cud.tools.mcp import (
     MCPConfig,
     _build_stdio_server_config,
     _filter_tools,
-    _make_cleanup,
     cmd_mcp_add,
     cmd_mcp_list,
     load_mcp_config,
@@ -119,58 +118,107 @@ def test_cmd_mcp_add_and_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 
 
 def test_load_mcp_tools_empty_servers(tmp_path: Path) -> None:
-    tools, cleanup = asyncio.run(load_mcp_tools_managed(tmp_path))
-    assert tools == []
-    assert cleanup is None
-
-    tools2, cleanup2 = asyncio.run(load_mcp_tools_for_servers({}))
-    assert tools2 == []
-    assert cleanup2 is None
+    assert asyncio.run(load_mcp_tools_managed(tmp_path)) == []
+    assert asyncio.run(load_mcp_tools_for_servers({})) == []
 
 
 @pytest.mark.anyio
-async def test_load_mcp_tools_managed_with_servers(tmp_path: Path) -> None:
-    config = MCPConfig(servers={"echo": {"command": "echo"}})
+async def test_load_mcp_tools_managed_applies_filter(tmp_path: Path) -> None:
+    """MultiServerMCPClient has no close(): it opens a session per tool call."""
+    config = MCPConfig(servers={"echo": {"command": "echo"}}, allowed_tools=["test_tool"])
     save_mcp_config(tmp_path, config)
 
     mock_client = MagicMock()
-    tool = DummyTool(name="test_tool")
-    mock_client.get_tools = AsyncMock(return_value=[tool])
-    mock_client.close = AsyncMock()
+    mock_client.get_tools = AsyncMock(return_value=[DummyTool(name="test_tool"), DummyTool(name="other")])
 
-    with patch("cud.tools.mcp.MultiServerMCPClient", return_value=mock_client):
-        tools, cleanup = await load_mcp_tools_managed(tmp_path)
-        assert tools == [tool]
-        assert cleanup is not None
-        await cleanup()
-        mock_client.close.assert_awaited_once()
+    with patch("cud.tools.mcp.MultiServerMCPClient", return_value=mock_client) as mock_cls:
+        tools = await load_mcp_tools_managed(tmp_path)
+        assert [t.name for t in tools] == ["test_tool"]
+        mock_cls.assert_called_once_with({"echo": {"command": "echo"}})
 
 
 @pytest.mark.anyio
 async def test_load_mcp_tools_for_servers_with_servers() -> None:
-    servers = {"echo": {"command": "echo"}}
     mock_client = MagicMock()
     tool = DummyTool(name="test_tool_2")
     mock_client.get_tools = AsyncMock(return_value=[tool])
-    mock_client.close = AsyncMock()
 
     with patch("cud.tools.mcp.MultiServerMCPClient", return_value=mock_client):
-        tools, cleanup = await load_mcp_tools_for_servers(servers)
-        assert tools == [tool]
-        assert cleanup is not None
-        await cleanup()
-        mock_client.close.assert_awaited_once()
+        assert await load_mcp_tools_for_servers({"echo": {"command": "echo"}}) == [tool]
 
 
-@pytest.mark.anyio
-async def test_make_cleanup_exception() -> None:
-    mock_client = MagicMock()
-    mock_client.close = AsyncMock(side_effect=RuntimeError("close error"))
+def test_mcp_client_has_no_close_api() -> None:
+    """Guards the assumption that removed the dead cleanup plumbing."""
+    from langchain_mcp_adapters.client import MultiServerMCPClient
 
-    cleanup = _make_cleanup(mock_client)
-    # Should not raise exception
-    await cleanup()
-    mock_client.close.assert_awaited_once()
+    assert not hasattr(MultiServerMCPClient, "close")
+
+
+def test_load_mcp_config_rejects_bad_types(tmp_path: Path) -> None:
+    (tmp_path / "mcp.json").write_text('{"servers": ["oops"]}', encoding="utf-8")
+    with pytest.raises(ValueError, match="'servers' must be an object"):
+        load_mcp_config(tmp_path)
+
+    (tmp_path / "mcp.json").write_text('{"servers": {"a": "not-an-object"}}', encoding="utf-8")
+    with pytest.raises(ValueError, match="server 'a' must be an object"):
+        load_mcp_config(tmp_path)
+
+    (tmp_path / "mcp.json").write_text('{"allowedTools": "read_file"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="'allowedTools' must be a list of strings"):
+        load_mcp_config(tmp_path)
+
+    (tmp_path / "mcp.json").write_text("[1, 2]", encoding="utf-8")
+    with pytest.raises(ValueError, match="expected an object"):
+        load_mcp_config(tmp_path)
+
+
+def test_mcp_config_with_string_allowed_tools_keeps_tools(tmp_path: Path) -> None:
+    """Regression: a string allowedTools used to become a set of characters
+    and silently delete the agent's entire toolset."""
+    (tmp_path / "mcp.json").write_text(
+        '{"servers": {"a": {"command": "x"}}, "allowedTools": ["read_file"]}', encoding="utf-8"
+    )
+    config = load_mcp_config(tmp_path)
+    assert config.allowed_tools == ["read_file"]
+    tools = [DummyTool(name="read_file"), DummyTool(name="write_file")]
+    assert [t.name for t in _filter_tools(tools, config)] == ["read_file"]
+
+
+def test_build_stdio_server_config_rejects_bad_env() -> None:
+    with pytest.raises(ValueError, match="KEY=VALUE"):
+        _build_stdio_server_config("uvx server", ["NOEQUALS"], "stdio")
+
+
+def test_mcp_add_picks_free_default_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Regression: the default name used to overwrite an existing entry."""
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("agent-a")
+    agent_dir = tmp_path / "agents" / "agent-a"
+    save_mcp_config(agent_dir, MCPConfig(servers={"server2": {"command": "keepme"}}))
+
+    assert cmd_mcp_add(argparse.Namespace(
+        agent="agent-a", server_url_or_cmd="echo", name=None,
+        allowed_tool=[], transport=None, env=[],
+    )) == 0
+
+    loaded = load_mcp_config(agent_dir)
+    assert loaded.servers["server2"] == {"command": "keepme"}
+    assert "server1" in loaded.servers
+
+
+def test_mcp_add_rejects_bad_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    create_agent("agent-b")
+    assert cmd_mcp_add(argparse.Namespace(
+        agent="agent-b", server_url_or_cmd="echo", name="x",
+        allowed_tool=[], transport=None, env=["NOEQUALS"],
+    )) == 2
+
+
+def test_save_mcp_config_creates_agent_dir(tmp_path: Path) -> None:
+    target = tmp_path / "nested" / "agent"
+    save_mcp_config(target, MCPConfig(servers={}))
+    assert (target / "mcp.json").exists()
 
 
 def test_register_mcp_commands() -> None:

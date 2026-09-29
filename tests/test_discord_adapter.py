@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -133,7 +134,7 @@ async def test_handle_message_success_multi_chunk(agent_dir: Path) -> None:
 
     with patch("cud.gateway.discord_adapter.send_response", new_callable=AsyncMock) as mock_send_resp:
         await gw.handle_message(msg)
-        mock_rt.invoke.assert_awaited_once_with("ping", thread_id="discord:1:2")
+        mock_rt.invoke.assert_awaited_once_with("ping")
         mock_send_resp.assert_awaited_once()
         channel.send.assert_awaited()
 
@@ -156,7 +157,7 @@ async def test_handle_message_exception(agent_dir: Path) -> None:
         await gw.handle_message(msg)
         mock_send_resp.assert_awaited_once()
         error_arg = mock_send_resp.call_args[0][1]
-        assert "Cud error: `ValueError: Something broke`" in error_arg
+        assert "Cud error: `ValueError`: Something broke" in error_arg
 
 
 @pytest.mark.anyio
@@ -221,7 +222,7 @@ async def test_cmd_undo(agent_dir: Path) -> None:
     gw.sessions["discord:dm:123"] = mock_rt
 
     await gw.cmd_undo(interaction)
-    mock_rt.undo_last_exchange.assert_awaited_once_with(thread_id="discord:dm:123")
+    mock_rt.undo_last_exchange.assert_awaited_once_with()
     interaction.response.send_message.assert_awaited_once_with("Exchange undone", ephemeral=True)
 
 
@@ -300,7 +301,7 @@ async def test_run_missing_token(agent_dir: Path) -> None:
     gw = DiscordGateway("discord-agent")
     gw.settings.gateway.token = ""
 
-    with pytest.raises(RuntimeError, match="gateway.token is empty"):
+    with pytest.raises(RuntimeError, match=r"gateway\.token is empty"):
         await gw.run()
 
 
@@ -407,3 +408,73 @@ def test_log_task_error() -> None:
     failed_task.exception.return_value = RuntimeError("scheduler died")
     failed_task.get_name.return_value = "cud-scheduler"
     _log_task_error(failed_task)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_aclose_sessions_survives_concurrent_mutation(agent_dir: Path) -> None:
+    """Regression: iterating self.sessions across an await while another task
+    called session() raised "dictionary changed size during iteration"."""
+    gw = DiscordGateway("discord-agent")
+
+    async def slow_aclose() -> None:
+        await asyncio.sleep(0)
+        gw.session("discord:1:added")  # mutate while the close loop is suspended
+
+    rt_ok = AsyncMock()
+    rt_ok.aclose = slow_aclose
+    rt_boom = AsyncMock()
+    rt_boom.aclose.side_effect = RuntimeError("already closed")
+    gw.sessions = {"a": rt_ok, "b": rt_boom}
+
+    await gw.aclose_sessions()
+    assert gw.sessions == {}
+
+
+@pytest.mark.anyio
+async def test_reload_sessions_isolates_failures(agent_dir: Path) -> None:
+    """Regression: one failing reload aborted the loop, leaving others stale."""
+    gw = DiscordGateway("discord-agent")
+    bad, good = AsyncMock(), AsyncMock()
+    bad.reload.side_effect = RuntimeError("bad agent")
+    gw.sessions = {"bad": bad, "good": good}
+
+    await gw._reload_sessions()
+    good.reload.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_handle_message_does_not_pass_thread_id(agent_dir: Path) -> None:
+    """Regression: passing thread_id explicitly made `/new` a no-op, because
+    runtime.thread_id was then never consulted."""
+    gw = DiscordGateway("discord-agent")
+    channel = _make_mock_channel(channel_id=2, guild_id=1)
+    msg = MagicMock(spec=["author", "content", "channel"])
+    msg.author = MagicMock(spec=["bot"])
+    msg.author.bot = False
+    msg.content = "hi"
+    msg.channel = channel
+
+    mock_rt = AsyncMock()
+    mock_rt.invoke.return_value = MagicMock(content="ok")
+    gw.sessions["discord:1:2"] = mock_rt
+
+    with patch("cud.gateway.discord_adapter.send_response", new_callable=AsyncMock):
+        await gw.handle_message(msg)
+    mock_rt.invoke.assert_awaited_once_with("hi")
+
+
+@pytest.mark.anyio
+async def test_new_session_changes_the_conversation_thread(agent_dir: Path) -> None:
+    gw = DiscordGateway("discord-agent")
+    thread_id = gw._get_thread_id(_make_mock_channel(channel_id=7, guild_id=1))
+    runtime = gw.session(thread_id)
+
+    before = runtime.thread_id
+    result = runtime.new_session()
+    assert runtime.thread_id != before
+    assert runtime.thread_id in result

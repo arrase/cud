@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import sys
-from pathlib import Path
 
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication
 
-from cud.gui.core.styles import DARK_STYLESHEET
+from cud.gui.core.styles import DARK_STYLESHEET, ICON_PATH
 from cud.gui.dashboard import MainWindow
-
-ICON_PATH = Path(__file__).parent / "assets" / "icon.png"
 
 
 def main() -> None:
     """Execute the PySide6 Cud GUI application event loop."""
+    # Without this, _log.warning/_log.exception output is lost when launched
+    # from a .desktop file (no stderr).
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
     app = QApplication(sys.argv)
     app.setStyleSheet(DARK_STYLESHEET)
     app.setWindowIcon(QIcon(str(ICON_PATH)))

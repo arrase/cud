@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shlex
+import urllib.parse
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -14,7 +17,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -26,8 +28,28 @@ from cud.gui.core.styles import (
     ACTION_BTN_DELETE,
     ACTION_BTN_UPDATE,
     LIST_STYLE,
+    create_action_button,
     monospace_font,
 )
+
+# Trailing marker used to round-trip env vars through the plain-text editor.
+ENV_MARKER = "env:"
+
+
+def _format_mcp_server(srv: SubAgentMCPServer) -> str:
+    """Render one MCP server as a single lossless editable line.
+
+    Env values are percent-encoded so commas, spaces and ``=`` inside a value
+    survive the round trip intact.
+    """
+    line = shlex.join([srv.name, srv.command, *srv.args])
+    if srv.env:
+        encoded = ",".join(
+            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+            for k, v in srv.env.items()
+        )
+        line = f"{line} {ENV_MARKER}[{encoded}]"
+    return line
 
 
 class SubagentsTab(QWidget):
@@ -69,13 +91,9 @@ class SubagentsTab(QWidget):
         self.left_col.addWidget(self.subagent_list, 1)
 
         self.list_actions = QHBoxLayout()
-        self.btn_add = QPushButton("➕ Add")
-        self.btn_add.setStyleSheet(ACTION_BTN_ADD)
-        self.btn_add.clicked.connect(self._on_add_clicked)
+        self.btn_add = create_action_button("➕ Add", ACTION_BTN_ADD, self._on_add_clicked)
 
-        self.btn_delete = QPushButton("❌ Delete")
-        self.btn_delete.setStyleSheet(ACTION_BTN_DELETE)
-        self.btn_delete.clicked.connect(self._on_delete_clicked)
+        self.btn_delete = create_action_button("❌ Delete", ACTION_BTN_DELETE, self._on_delete_clicked)
 
         self.list_actions.addWidget(self.btn_add)
         self.list_actions.addWidget(self.btn_delete)
@@ -119,7 +137,7 @@ class SubagentsTab(QWidget):
         self.input_mcp = QPlainTextEdit()
         self.input_mcp.setPlaceholderText(
             "MCP servers, one per line:\n"
-            "name command arg1 arg2\n"
+            "name command arg1 arg2 [env:KEY=VALUE,...]\n"
             "e.g., postgres npx -y @modelcontextprotocol/server-postgres"
         )
         self.input_mcp.setFont(mono)
@@ -133,9 +151,7 @@ class SubagentsTab(QWidget):
         self.form_layout.addRow("Skills Paths:", self.input_skills)
         self.form_layout.addRow("MCP Servers:", self.input_mcp)
 
-        self.btn_update = QPushButton("💾 Update Subagent Data")
-        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
-        self.btn_update.clicked.connect(self._on_update_clicked)
+        self.btn_update = create_action_button("💾 Update Subagent Data", ACTION_BTN_UPDATE, self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
         self.right_col.addWidget(self.group_editor)
@@ -198,11 +214,8 @@ class SubagentsTab(QWidget):
         self.input_prompt.setPlainText(sa.system_prompt)
         self.input_skills.setText(", ".join(sa.skills_paths))
 
-        # Serialize MCP servers to readable lines
-        mcp_lines: list[str] = []
-        for srv in sa.mcp_servers:
-            parts = [srv.name, srv.command] + srv.args
-            mcp_lines.append(" ".join(parts))
+        # Serialize MCP servers to readable, lossless lines
+        mcp_lines = [_format_mcp_server(srv) for srv in sa.mcp_servers]
         self.input_mcp.setPlainText("\n".join(mcp_lines))
 
     def _on_add_clicked(self) -> None:
@@ -271,23 +284,42 @@ class SubagentsTab(QWidget):
         sa.skills_paths = skills_paths
         sa.mcp_servers = mcp_servers
 
+        saved_row = self._selected_index
         self._refresh_list()
+        self.subagent_list.setCurrentRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Subagent '{name}' updated in memory.")
 
     @staticmethod
     def _parse_mcp_servers(text: str) -> list[SubAgentMCPServer]:
         """Parse MCP server definitions from multi-line text.
 
-        Each line format: ``name command arg1 arg2 ...``
+        Each line is ``name command arg1 arg2 ... [env:KEY=VALUE,...]``.
+        Arguments are shlex-quoted and env values percent-encoded, so values
+        containing spaces, commas or ``=`` survive the round trip.
         """
         servers: list[SubAgentMCPServer] = []
         for line in text.strip().splitlines():
-            parts = line.strip().split()
+            line = line.strip()
+            if not line:
+                continue
+            env: dict[str, str] = {}
+            if line.endswith("]") and ENV_MARKER in line:
+                line, _, env_blob = line.rpartition(ENV_MARKER)
+                line = line.rstrip()
+                for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
+                    key, sep, value = pair.partition("=")
+                    if sep:
+                        env[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+            try:
+                parts = shlex.split(line)
+            except ValueError:
+                continue  # Unbalanced quotes: skip the line rather than corrupt the config.
             if len(parts) < 2:
                 continue
             servers.append(SubAgentMCPServer(
                 name=parts[0],
                 command=parts[1],
                 args=parts[2:],
+                env=env,
             ))
         return servers

@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from cud.gateway.scheduler import TaskScheduler, _next_scheduled
@@ -85,7 +86,7 @@ def test_scheduler_load_tasks(tmp_path: Path) -> None:
 @pytest.mark.anyio
 async def test_resolve_target_channel() -> None:
     gateway = MagicMock()
-    channel_mock = MagicMock()
+    channel_mock = MagicMock(spec=discord.abc.Messageable)
     gateway.bot.get_channel.return_value = channel_mock
     scheduler = TaskScheduler(gateway)
 
@@ -99,9 +100,43 @@ async def test_resolve_target_channel() -> None:
 
 
 @pytest.mark.anyio
+async def test_resolve_target_channel_cache_miss_fetches() -> None:
+    """A cache miss must not discard the result of a full agent run."""
+    gateway = MagicMock()
+    channel_mock = MagicMock(spec=discord.abc.Messageable)
+    gateway.bot.get_channel.return_value = None
+    gateway.bot.fetch_channel = AsyncMock(return_value=channel_mock)
+    scheduler = TaskScheduler(gateway)
+
+    task = TaskCard(
+        name="t", description="", schedule="*", channel_id=999, user_id=None,
+        enabled=True, path=Path("/t"), prompt="p"
+    )
+    assert await scheduler._resolve_target(task) is channel_mock
+    gateway.bot.fetch_channel.assert_awaited_once_with(999)
+
+
+@pytest.mark.anyio
+async def test_resolve_target_rejects_non_messageable_channel() -> None:
+    """CategoryChannel is not Messageable: sending would raise AttributeError."""
+    gateway = MagicMock()
+    gateway.bot.get_channel.return_value = MagicMock(spec=[])  # not Messageable
+    gateway.bot.fetch_channel = AsyncMock(side_effect=AssertionError("must not fetch"))
+    scheduler = TaskScheduler(gateway)
+
+    task = TaskCard(
+        name="t", description="", schedule="*", channel_id=999, user_id=None,
+        enabled=True, path=Path("/t"), prompt="p"
+    )
+    assert await scheduler._resolve_target(task) is None
+
+
+@pytest.mark.anyio
 async def test_resolve_target_user() -> None:
+    """Falls back to a DM when the channel cannot be resolved."""
     gateway = MagicMock()
     gateway.bot.get_channel.return_value = None
+    gateway.bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "gone"))
     user_mock = MagicMock()
     gateway.bot.fetch_user = AsyncMock(return_value=user_mock)
     scheduler = TaskScheduler(gateway)
@@ -119,7 +154,7 @@ async def test_resolve_target_user() -> None:
 async def test_resolve_target_user_exception() -> None:
     gateway = MagicMock()
     gateway.bot.get_channel.return_value = None
-    gateway.bot.fetch_user = AsyncMock(side_effect=RuntimeError("user not found"))
+    gateway.bot.fetch_user = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "no such user"))
     scheduler = TaskScheduler(gateway)
 
     task = TaskCard(
@@ -166,7 +201,9 @@ async def test_execute_success() -> None:
 
 
 @pytest.mark.anyio
-async def test_execute_no_target() -> None:
+async def test_execute_no_target_skips_run() -> None:
+    """Regression: the target is resolved *before* the agent runs, so an
+    unresolvable destination no longer burns a full invocation."""
     gateway = MagicMock()
     runtime_mock = AsyncMock()
     runtime_mock.invoke.return_value = MagicMock(content="Hello")
@@ -182,8 +219,8 @@ async def test_execute_no_target() -> None:
     )
     await scheduler._execute(task)
 
-    runtime_mock.invoke.assert_awaited_once()
-    runtime_mock.aclose.assert_awaited_once()
+    runtime_mock.invoke.assert_not_called()
+    gateway.session.assert_not_called()
 
 
 @pytest.mark.anyio
@@ -195,6 +232,7 @@ async def test_execute_invoke_exception() -> None:
     gateway.sessions = {}
 
     scheduler = TaskScheduler(gateway)
+    scheduler._resolve_target = AsyncMock(return_value=MagicMock(send=AsyncMock()))
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=1, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"

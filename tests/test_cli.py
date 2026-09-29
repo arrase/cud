@@ -29,9 +29,17 @@ def test_build_parser() -> None:
     assert parser.prog == "cud"
 
 
-def test_cmd_completion() -> None:
+def test_cmd_completion(capsys: pytest.CaptureFixture[str]) -> None:
+    """The script must list every registered subcommand, derived from the parser."""
     assert cmd_completion(argparse.Namespace(shell="bash")) == 0
+    bash = capsys.readouterr().out
     assert cmd_completion(argparse.Namespace(shell="zsh")) == 0
+    zsh = capsys.readouterr().out
+
+    for shell_out in (bash, zsh):
+        assert bash != zsh, "bash and zsh must not emit the same script"
+        for command in build_parser()._subparsers._group_actions[0].choices:
+            assert command in shell_out, command
 
 
 def test_main_completion() -> None:
@@ -126,11 +134,14 @@ def test_gateway_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert settings.gateway.provider == "discord"
     assert settings.gateway.token == "bot_token_123"
 
-    # Gateway setup for telegram (platform != discord)
+    # A non-discord platform must be rejected, and must not brick the agent:
+    # every later load_settings on a telegram/token config raises.
     setup_tg = argparse.Namespace(
         agent="gw-agent", platform="telegram", token="bot_token_tg"
     )
-    assert cmd_gateway_setup(setup_tg) == 0
+    with pytest.raises(ValueError, match="discord gateway provider"):
+        cmd_gateway_setup(setup_tg)
+    assert load_settings(agent_home("gw-agent")).gateway.provider == "discord"
 
     # Gateway run
     with patch("cud.gateway.cli.run_gateway") as mock_rg:

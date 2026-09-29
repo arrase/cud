@@ -11,9 +11,49 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sonar-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  quality:
+    name: Lint, Types and Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Type check (mypy)
+        run: mypy src
+
+      - name: Test (pytest, with coverage gate)
+        run: pytest --cov=cud --cov-report=term --cov-report=xml:coverage.xml
+
+      - name: Validate installer script
+        run: |
+          bash -n install.sh
+          shellcheck install.sh
+
   sonarcloud:
     name: SonarQube Cloud Scan
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -29,19 +69,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e .[test,dev]
+          pip install -e .[dev]
 
-      - name: Run Ruff
-        run: |
-          ruff check . --output-format json --output-file ruff-report.json --exit-zero
+      - name: Lint (ruff)
+        run: ruff check . --output-format json --output-file ruff-report.json
 
-      - name: Run Mypy
-        run: |
-          mypy src/ --show-column-numbers --show-error-codes --ignore-missing-imports > mypy-report.txt || true
+      - name: Type check (mypy)
+        run: mypy src --show-column-numbers --show-error-codes > mypy-report.txt
 
       - name: Run tests with coverage
-        run: |
-          pytest --cov=cud --cov-report=xml:coverage.xml --cov-report=term
+        run: pytest --cov=cud --cov-report=xml:coverage.xml --cov-report=term
 
       - name: SonarQube Cloud Scan
         uses: SonarSource/sonarqube-scan-action@v8

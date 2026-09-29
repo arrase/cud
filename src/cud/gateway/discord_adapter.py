@@ -28,15 +28,27 @@ class DiscordGateway:
         self.agent_dir = agent_home(agent)
         self.settings = load_settings(self.agent_dir)
         self.verbose = verbose
+        # Keyed by the Discord channel/thread; `runtime.thread_id` is what
+        # actually selects the LangGraph conversation, so `/new` works.
         self.sessions: dict[str, AgentRuntime] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
         self.bot: commands.Bot | None = None
         self.scheduler = TaskScheduler(self)
 
     async def aclose_sessions(self) -> None:
-        """Close all active runtime sessions."""
-        for runtime in self.sessions.values():
-            await runtime.aclose()
-        self.sessions.clear()
+        """Close all active runtime sessions.
+
+        Snapshot before awaiting: `session()` and the scheduler mutate the dict
+        from other tasks, and iterating it live across an `await` raises. Loop
+        until stable so a session opened mid-shutdown is not leaked.
+        """
+        while self.sessions:
+            sessions = list(self.sessions.values())
+            self.sessions.clear()
+            results = await asyncio.gather(*(rt.aclose() for rt in sessions), return_exceptions=True)
+            for exc in results:
+                if exc is not None:
+                    _log.error("Error closing session", exc_info=exc)
 
     # -- Session management --------------------------------------------------
 
@@ -58,9 +70,14 @@ class DiscordGateway:
         return runtime
 
     async def _reload_sessions(self) -> None:
+        """Reload config and every live session; one failure must not abort the rest."""
         self.settings = load_settings(self.agent_dir)
-        for runtime in self.sessions.values():
-            await runtime.reload()
+        # Snapshot both before awaiting: the dict can change while we reload.
+        runtimes = list(self.sessions.items())
+        results = await asyncio.gather(*(rt.reload() for _, rt in runtimes), return_exceptions=True)
+        for (thread_id, _), exc in zip(runtimes, results, strict=True):
+            if exc is not None:
+                _log.error("Reload failed for session %s", thread_id, exc_info=exc)
 
     # -- Message handling ----------------------------------------------------
 
@@ -70,8 +87,11 @@ class DiscordGateway:
         thread_id = self._get_thread_id(message)
         try:
             runtime = self.session(thread_id)
-            async with message.channel.typing():
-                response = await runtime.invoke(message.content, thread_id=thread_id)
+            # Serialize per thread: concurrent messages in one channel would
+            # race on the same LangGraph checkpoint version.
+            async with self._thread_lock(thread_id):
+                async with message.channel.typing():
+                    response = await runtime.invoke(message.content)
 
             content = response.content
             chunks = split_message(content)
@@ -81,8 +101,21 @@ class DiscordGateway:
 
         except Exception as exc:
             _log.exception("Error handling message in thread %s", thread_id)
-            error_msg = f"Cud error: `{type(exc).__name__}: {str(exc)[:1600]}`"
-            await send_response(message, error_msg)
+            await self._notify_error(message, f"`{type(exc).__name__}`: {str(exc)[:1600]}")
+
+    def _thread_lock(self, thread_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(thread_id, asyncio.Lock())
+
+    async def _notify_error(self, message: discord.Message, detail: str) -> None:
+        """Report a failure to the channel without leaking internals twice.
+
+        If the original failure *was* the Discord send, this fallback can fail
+        too; swallow that so no unhandled task exception escapes.
+        """
+        try:
+            await send_response(message, f"Cud error: {detail}")
+        except Exception:
+            _log.exception("Failed to deliver the error message to Discord")
 
     # -- Slash commands ------------------------------------------------------
 
@@ -94,8 +127,8 @@ class DiscordGateway:
 
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        runtime = self.session(thread_id)
-        result = await runtime.set_model(model_name)
+        # set_model() persists and reloads this runtime itself.
+        result = await self.session(thread_id).set_model(model_name)
         await self._reload_sessions()
         await interaction.response.send_message(result, ephemeral=True)
 
@@ -108,7 +141,7 @@ class DiscordGateway:
 
     async def cmd_undo(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        result = await self.session(thread_id).undo_last_exchange(thread_id=thread_id)
+        result = await self.session(thread_id).undo_last_exchange()
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_reload(self, interaction: discord.Interaction) -> None:
@@ -139,15 +172,22 @@ class DiscordGateway:
     async def run(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
-        bot = commands.Bot(command_prefix="!cud ", intents=intents)
+        # `command_prefix` is inert: only slash commands are exposed and
+        # `process_commands` is never reached, but Bot still requires the arg.
+        bot = commands.Bot(command_prefix="", intents=intents)
         self.bot = bot
         gw = self  # Capture for closures below.
+        scheduler_task: asyncio.Task[None] | None = None
 
         @bot.event
         async def on_ready() -> None:
+            # `ready` is re-dispatched on every non-resumable reconnect, so the
+            # scheduler must be started exactly once or tasks fire repeatedly.
+            nonlocal scheduler_task
             await bot.tree.sync()
-            scheduler_task = bot.loop.create_task(gw.scheduler.run(), name="cud-scheduler")
-            scheduler_task.add_done_callback(_log_task_error)
+            if scheduler_task is None or scheduler_task.done():
+                scheduler_task = bot.loop.create_task(gw.scheduler.run(), name="cud-scheduler")
+                scheduler_task.add_done_callback(_log_task_error)
             if gw.verbose:
                 _log.info("Discord gateway ready as %s", bot.user)
 

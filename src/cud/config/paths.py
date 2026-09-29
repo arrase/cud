@@ -19,7 +19,9 @@ def agents_root() -> Path:
 
 
 def validate_agent_name(name: str) -> str:
-    if not _AGENT_RE.match(name):
+    # fullmatch (not match) so a trailing newline cannot slip past: agent names
+    # are interpolated into systemd unit files, which are line-oriented.
+    if not _AGENT_RE.fullmatch(name):
         raise ValueError(
             "agent name must start with an alphanumeric character and contain "
             "only letters, numbers, '.', '_' or '-'"

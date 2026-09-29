@@ -6,11 +6,14 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from cud.config.paths import agent_home
+from cud.config.paths import agent_home, validate_agent_name
+
+# A hung D-Bus call must not block the CLI (or a GUI worker thread) forever.
+_SYSTEMD_TIMEOUT = 15
 
 
 def service_name(agent: str) -> str:
-    return f"cud-gateway-{agent}.service"
+    return f"cud-gateway-{validate_agent_name(agent)}.service"
 
 
 def unit_path(agent: str) -> Path:
@@ -64,7 +67,9 @@ def systemd_available() -> bool:
 
 
 def systemctl_user(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["systemctl", "--user", *args], check=False, text=True, capture_output=True)
+    return subprocess.run(
+        ["systemctl", "--user", *args], check=False, text=True, capture_output=True, timeout=_SYSTEMD_TIMEOUT
+    )
 
 
 def journalctl_user(agent: str, lines: int = 50) -> subprocess.CompletedProcess[str]:
@@ -73,5 +78,6 @@ def journalctl_user(agent: str, lines: int = 50) -> subprocess.CompletedProcess[
         check=False,
         text=True,
         capture_output=True,
+        timeout=_SYSTEMD_TIMEOUT,
     )
 

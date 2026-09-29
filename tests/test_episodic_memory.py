@@ -59,7 +59,8 @@ def _seed_db(db_path: Path) -> None:
     ]
     typ1, val1 = serializer.dumps_typed(t1_msgs)
     cur.execute(
-        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("thread-100", "cp-1", "task-1", 0, "messages", typ1, val1),
     )
 
@@ -76,7 +77,8 @@ def _seed_db(db_path: Path) -> None:
     ]
     typ2, val2 = serializer.dumps_typed(t2_msgs)
     cur.execute(
-        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("thread-200", "cp-2", "task-2", 0, "messages", typ2, val2),
     )
 
@@ -94,7 +96,8 @@ def _seed_db(db_path: Path) -> None:
     ]
     typ3, val3 = serializer.dumps_typed(t3_msgs)
     cur.execute(
-        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("thread-300", "cp-3", "task-3", 0, "messages", typ3, val3),
     )
 
@@ -172,7 +175,8 @@ def test_load_past_conversations_orphan_write(tmp_path: Path) -> None:
     orphan_msg = HumanMessage(content="Orphan prompt")
     typ, val = serializer.dumps_typed([orphan_msg])
     cur.execute(
-        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ("orphan-thread", "cp-orphan", "task-orphan", 0, "messages", typ, val),
     )
     conn.commit()
@@ -254,3 +258,128 @@ async def test_search_past_conversations_tool_error(tmp_path: Path) -> None:
     tool = create_search_past_conversations_tool(db, lambda: "t-1")
     out = await tool.ainvoke({"query": "anything"})
     assert "Error searching past conversations" in out
+
+
+# ---------------------------------------------------------------------------
+# Regression tests
+# ---------------------------------------------------------------------------
+
+
+def test_search_rejects_non_positive_limit(tmp_path: Path) -> None:
+    """Regression: a negative limit became a negative slice, returning
+    len(results)-1 rows, and the CLI never validated it."""
+    db = tmp_path / "history.db"
+    _seed_db(db)
+    for limit in (0, -1, -5):
+        assert search_past_conversations_in_db("docker", db_path=db, limit=limit) == []
+
+
+def test_date_only_match_does_not_show_unrelated_dialogue(tmp_path: Path) -> None:
+    """Regression: when only the date matched, the first two messages of the
+    thread were shown as if they were content matches."""
+    db = tmp_path / "history.db"
+    _seed_db(db)
+    results = search_past_conversations_in_db("2026-08-21", db_path=db, limit=3)
+    assert [r["thread_id"] for r in results] == ["thread-200"]
+    assert all("date only" in s.lower() for s in results[0]["snippets"]), results[0]["snippets"]
+    assert "React" not in " ".join(results[0]["snippets"])
+
+
+def test_duplicate_message_rows_are_deduped(tmp_path: Path) -> None:
+    """A node that rewrites the whole list produced duplicated messages."""
+    db = tmp_path / "history.db"
+    _seed_db(db)
+    serializer = JsonPlusSerializer()
+    conn = sqlite3.connect(str(db))
+    msgs = [
+        HumanMessage(content="How do I dockerize a FastAPI application?", id="m1"),
+        AIMessage(content="You should create a Dockerfile using python:3.11-slim and install uvicorn.",
+                  id="m2"),
+    ]
+    typ, val = serializer.dumps_typed(msgs)
+    for row in range(2):
+        conn.execute(
+            "INSERT INTO writes (thread_id, checkpoint_id, task_id, idx, channel, type, value) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("thread-dup", f"cp-{row}", "task-1", row, "messages", typ, val),
+        )
+    chk_typ, chk_val = serializer.dumps_typed({"ts": "2026-08-20T10:00:00+00:00"})
+    conn.execute(
+        "INSERT INTO checkpoints (thread_id, checkpoint_id, type, checkpoint) VALUES (?, ?, ?, ?)",
+        ("thread-dup", "cp-0", chk_typ, chk_val),
+    )
+    conn.commit()
+    conn.close()
+
+    conversations = load_past_conversations(db)
+    assert [m.id for m in conversations["thread-dup"]["messages"]] == ["m1", "m2"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({"ts": "not-a-timestamp"}, "Invalid checkpoint timestamp"),
+        ({"other": 1}, "no timestamp"),
+    ],
+)
+def test_corrupt_checkpoint_raises_history_error(
+    tmp_path: Path, payload: dict[str, object], message: str
+) -> None:
+    """Regression: a raw ValueError/KeyError escaped into the LLM tool call."""
+    from cud.agent.episodic_memory import HistoryError
+
+    db = tmp_path / "history.db"
+    _seed_db(db)
+    serializer = JsonPlusSerializer()
+    typ, val = serializer.dumps_typed(payload)
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "INSERT INTO checkpoints (thread_id, checkpoint_id, type, checkpoint) VALUES (?, ?, ?, ?)",
+        ("thread-100", "cp-broken", typ, val),
+    )
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(HistoryError, match=message):
+        load_past_conversations(db)
+
+
+@pytest.mark.anyio
+async def test_tool_reports_history_errors_as_text(tmp_path: Path) -> None:
+    """A corrupt database must reach the model as a message, not a traceback."""
+    db = tmp_path / "history.db"
+    db.write_bytes(b"definitely not sqlite")
+    tool = create_search_past_conversations_tool(db_path=db, get_thread_id=lambda: "t")
+    out = await tool.ainvoke({"query": "docker"})
+    assert "Error searching past conversations" in out
+
+
+def test_history_uri_escapes_special_characters(tmp_path: Path) -> None:
+    """Regression: an unescaped '?' in the path made sqlite silently open a
+    *different* database file (`.../we` instead of `.../we?ird.db`)."""
+    weird = tmp_path / "we?ird.db"
+    conn = sqlite3.connect(str(weird))
+    conn.execute("CREATE TABLE marker (x)")
+    conn.execute("INSERT INTO marker VALUES (1)")
+    conn.commit()
+    conn.close()
+    # A decoy file that the unescaped URI would resolve to instead.
+    sqlite3.connect(str(tmp_path / "we")).close()
+
+    with connect_history(weird) as read_only:
+        path = read_only.execute("PRAGMA database_list").fetchone()[2]
+        assert path == str(weird.resolve())
+        assert read_only.execute("SELECT x FROM marker").fetchone() == (1,)
+
+
+def test_extract_text_strips_every_path() -> None:
+    assert extract_text("  padded  ") == "padded"
+    assert extract_text(["  a  ", "  b  "]) == "a b"
+    assert extract_text({"text": "  x  "}) == "x"
+
+
+def test_message_role_reads_objects_and_dicts() -> None:
+    from cud.agent.episodic_memory import _message_role_and_text
+
+    assert _message_role_and_text(HumanMessage(content="hi")) == ("human", "hi")
+    assert _message_role_and_text({"role": "user", "content": " hi "}) == ("user", "hi")

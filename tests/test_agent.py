@@ -17,6 +17,7 @@ from cud.config.scaffold import create_agent
 @dataclass
 class DummyMessage:
     content: str
+    type: str = "ai"
 
 
 def test_extract_content_from_dict() -> None:
@@ -34,8 +35,19 @@ def test_extract_content_from_object() -> None:
     assert _extract_content(raw) == "object content"
 
 
-def test_extract_content_fallback() -> None:
-    assert _extract_content({"other": "value"}) == "{'other': 'value'}"
+def test_extract_content_skips_tool_messages() -> None:
+    raw = {
+        "messages": [
+            {"role": "ai", "content": "real answer"},
+            {"role": "tool", "content": "SECRET DB DUMP"},
+        ]
+    }
+    assert _extract_content(raw) == "real answer"
+
+
+def test_extract_content_returns_empty_without_assistant_message() -> None:
+    assert _extract_content({"other": "value"}) == ""
+    assert _extract_content({"messages": [{"role": "tool", "content": "x"}]}) == ""
 
 
 def test_response_from_raw() -> None:

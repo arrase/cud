@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 
 from cud.config.settings import GatewaySettings, ModelSettings, RuntimeSettings, Settings
 
-
 _READONLY_STYLE = "background-color: #252525; color: #888888;"
 
 
@@ -121,6 +120,7 @@ class SettingsTab(QWidget):
         self.current_settings = settings
 
         m = self.current_settings.model
+        self.input_provider.setText(m.provider)
         self.input_model_name.setText(m.name)
         self.input_base_url.setText(m.base_url)
         self.input_temp.setValue(m.temperature)
@@ -130,6 +130,8 @@ class SettingsTab(QWidget):
         self.chk_traversal.setChecked(r.allow_traversal)
 
         g = self.current_settings.gateway
+        self.input_gw_provider.setText(g.provider)
+        self.input_gw_mode.setText(g.mode)
         self.input_token.setText(g.token)
 
     def save_data(self) -> Settings:
