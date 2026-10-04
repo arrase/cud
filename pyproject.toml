@@ -13,7 +13,7 @@ authors = [{ name = "Cud contributors" }]
 dependencies = [
   "deepagents>=0.7.20",
   "discord.py>=2.7.1",
-  "langchain>=1.4.2",
+  "langchain>=1.4.3",
   "langchain-core>=1.6.5",
   "langchain-mcp-adapters>=0.3.2",
   "langchain-ollama>=1.1.0",
