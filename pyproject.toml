@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Cud contributors" }]
 dependencies = [
-  "deepagents>=0.7.20",
+  "deepagents>=0.7.21",
   "discord.py>=2.7.1",
   "langchain>=1.4.3",
   "langchain-core>=1.6.6",
