@@ -2,6 +2,7 @@ site_name: Cud
 site_description: Local-first, multi-agent framework powered by Ollama, DeepAgents, and Discord.
 site_author: Arrase
 site_url: https://arrase.github.io/cud/
+docs_dir: gh-pages
 
 repo_name: arrase/cud
 repo_url: https://github.com/arrase/cud

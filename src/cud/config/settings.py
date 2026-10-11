@@ -23,7 +23,7 @@ class ModelSettings:
 @dataclass(slots=True)
 class RuntimeSettings:
     # True = the agent gets the host shell (virtual_mode=False). Documented as
-    # such in docs/tools-skills.md; flip to False for a sandboxed default.
+    # such in gh-pages/tools-skills.md; flip to False for a sandboxed default.
     allow_traversal: bool = True
 
 
