@@ -9,10 +9,12 @@ from cud.config.settings import (
     Settings,
     SubAgentMCPServer,
     SubAgentSettings,
+    _atomic_write,
+    format_subagent_mcp_server,
     load_settings,
+    parse_subagent_mcp_servers,
     save_settings,
     validate_settings,
-    validate_subagents,
 )
 
 
@@ -168,8 +170,17 @@ def test_save_settings_rejects_invalid_config(tmp_path: Path) -> None:
         ("model:\n  temperature: 'hot'\n", "must be a number"),
         ("model: ollama\n", "must be a mapping"),
         ("model:\n  context_window: true\n", "must be a number"),
+        ("model:\n  context_window: 3.5\n", "must be an integer"),
+        ("model:\n  name: 123\n", "must be a string"),
+        ("runtime:\n  allow_traversal: 'false'\n", "allow_traversal must be a boolean"),
+        ("subagents:\n  - name: a\n    skills_paths: not-a-list\n", "must be a list of strings"),
+        (
+            "subagents:\n  - name: a\n    mcp_servers:\n      - name: s\n        command: c\n        env: [1]\n",
+            "must be a string mapping",
+        ),
         ("- a\n- b\n", "must contain a mapping"),
         ("subagents: not-a-list\n", "must be a list"),
+        ("subagents:\n  - not-a-dict\n", "each subagent must be a mapping"),
         ("model: [unclosed\n", "not valid YAML"),
     ],
 )
@@ -204,10 +215,10 @@ def test_save_settings_does_not_truncate_on_write_failure(
     path = tmp_path / "settings.yaml"
     before = path.read_text(encoding="utf-8")
 
-    def boom(*_args: object, **_kwargs: object) -> None:
+    def boom_fdopen(*_args: object, **_kwargs: object) -> None:
         raise OSError("disk full")
 
-    monkeypatch.setattr("os.fdopen", boom)
+    monkeypatch.setattr("os.fdopen", boom_fdopen)
     with pytest.raises(OSError, match="disk full"):
         save_settings(tmp_path, Settings())
 
@@ -218,8 +229,6 @@ def test_save_settings_does_not_truncate_on_write_failure(
 def test_atomic_write_cleans_up_when_fsync_target_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from cud.config.settings import _atomic_write
-
     target = tmp_path / "out.txt"
     monkeypatch.setattr(Path, "replace", boom)
     with pytest.raises(OSError):
@@ -232,24 +241,20 @@ def boom(*_args: object, **_kwargs: object) -> None:
     raise OSError("rename failed")
 
 
-def test_validate_subagents_is_writer_side_only() -> None:
-    """Subagent checks must not stop an otherwise startable agent from booting."""
+def test_validate_settings_validates_subagents() -> None:
+    """validate_settings enforces all subagent invariants."""
     settings = Settings()
     settings.subagents = [SubAgentSettings(name="a"), SubAgentSettings(name="a")]
     with pytest.raises(ValueError, match="duplicate subagent name"):
-        validate_subagents(settings)
+        validate_settings(settings)
 
     settings.subagents = [SubAgentSettings(name="", description="d")]
     with pytest.raises(ValueError, match=r"subagent\.name is required"):
-        validate_subagents(settings)
+        validate_settings(settings)
 
     settings.subagents = [SubAgentSettings(name="a", context_window=-1)]
     with pytest.raises(ValueError, match="must not be negative"):
-        validate_subagents(settings)
-
-    # load_settings only enforces the start-up invariants.
-    settings.subagents = [SubAgentSettings(name="a"), SubAgentSettings(name="a")]
-    validate_settings(settings)
+        validate_settings(settings)
 
 
 def test_save_settings_rejects_bad_subagents(tmp_path: Path) -> None:
@@ -287,3 +292,12 @@ def test_save_settings_rejects_non_integer_subagent_context(tmp_path: Path) -> N
     settings.subagents = [SubAgentSettings(name="a", context_window=None)]  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="must be an integer"):
         save_settings(tmp_path, settings)
+
+
+def test_subagent_mcp_server_roundtrip() -> None:
+    srv = SubAgentMCPServer(
+        name="pg", command="npx", args=["-y", "@mcp/pg"], env={"DSN": "a,b=c"}
+    )
+    formatted = format_subagent_mcp_server(srv)
+    assert parse_subagent_mcp_servers(formatted) == [srv]
+    assert parse_subagent_mcp_servers("onlyname\n'unclosed\n\n") == []

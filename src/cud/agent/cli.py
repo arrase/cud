@@ -7,7 +7,11 @@ import argparse
 from rich.console import Console
 from rich.table import Table
 
-from cud.agent.episodic_memory import search_past_conversations_in_db
+from cud.agent.episodic_memory import (
+    build_memory_search_table,
+    search_past_conversations_in_db,
+)
+from cud.agent.runtime import clear_agent_memory, read_agent_memory
 from cud.config.paths import agent_home, agents_root
 from cud.config.scaffold import create_agent, delete_agent, list_agents
 from cud.config.settings import load_settings, save_settings
@@ -40,9 +44,10 @@ def register_agent_commands(sub: argparse._SubParsersAction) -> None:
     config.set_defaults(func=cmd_agent_config)
     memory = agent_sub.add_parser("memory", help="Inspect or search agent memory")
     memory.add_argument("name")
-    memory.add_argument("--search", "-s", help="Search episodic conversation history")
-    memory.add_argument("--clear", action="store_true", help="Clear MEMORY.md")
-    memory.add_argument("--view", action="store_true", help="View MEMORY.md (default)")
+    memory_group = memory.add_mutually_exclusive_group()
+    memory_group.add_argument("--search", "-s", help="Search episodic conversation history")
+    memory_group.add_argument("--clear", action="store_true", help="Clear MEMORY.md")
+    memory_group.add_argument("--view", action="store_true", help="View MEMORY.md (default)")
     memory.set_defaults(func=cmd_agent_memory)
 
 
@@ -77,16 +82,8 @@ def cmd_agent_delete(args: argparse.Namespace) -> int:
         console.print("[red]Refusing to delete without --yes[/red]")
         return 2
 
-    if systemd.systemd_available():
-        console.print(f"Stopping service for [bold]{args.name}[/bold]...")
-        systemd.stop_service(args.name)
-        console.print(f"Disabling service for [bold]{args.name}[/bold]...")
-        systemd.disable_service(args.name)
-        console.print(f"Removing systemd unit for [bold]{args.name}[/bold]...")
-        systemd.remove_unit(args.name)
-        systemd.systemctl_user("daemon-reload")
-
-    path = delete_agent(args.name, yes=True)
+    systemd.uninstall_unit(args.name)
+    path = delete_agent(args.name)
     console.print(f"Deleted agent directory: [bold]{path}[/bold]")
     return 0
 
@@ -114,8 +111,7 @@ def cmd_agent_memory(args: argparse.Namespace) -> int:
         return 1
 
     if args.clear:
-        path = directory / "MEMORY.md"
-        path.write_text("# Long-Term Memory\n\nNo persistent memories yet.\n", encoding="utf-8")
+        clear_agent_memory(directory)
         console.print(f"[green]Cleared memory for {args.name}[/green]")
         return 0
 
@@ -125,19 +121,9 @@ def cmd_agent_memory(args: argparse.Namespace) -> int:
         if not results:
             console.print(f"[yellow]No sessions found matching '{args.search}'.[/yellow]")
             return 0
-        table = Table(title=f"Episodic Memory Search: '{args.search}'")
-        table.add_column("Session ID", style="bold cyan")
-        table.add_column("Date", style="dim")
-        table.add_column("Score", justify="right")
-        table.add_column("Snippet Preview")
-        for item in results:
-            snippets_text = "\n".join(item["snippets"][:2])
-            table.add_row(item["thread_id"][:8], item["formatted_date"], str(item["score"]), snippets_text)
-        console.print(table)
+        console.print(build_memory_search_table(args.search, results))
         return 0
 
-    path = directory / "MEMORY.md"
-    content = path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
-    console.print(content)
+    console.print(read_agent_memory(directory))
     return 0
 

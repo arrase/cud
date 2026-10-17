@@ -4,25 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langgraph.graph.message import RemoveMessage
+from langgraph.graph.message import RemoveMessage, add_messages
 
 from cud.agent.runtime import AgentRuntime, _drop_last_exchange, _response_from_raw
-from cud.config.scaffold import create_agent
 from cud.config.settings import SubAgentSettings, load_settings, save_settings
-
-
-@pytest.fixture
-def agent_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    return create_agent("test-agent")
-
-
-def test_runtime_sync_context_manager(agent_dir: Path) -> None:
-    mock_close = MagicMock()
-    with patch.object(AgentRuntime, "close", mock_close):
-        with AgentRuntime(agent_dir=agent_dir) as rt:
-            assert isinstance(rt, AgentRuntime)
-        mock_close.assert_called_once()
 
 
 @pytest.mark.anyio
@@ -72,13 +57,13 @@ async def test_runtime_reload_and_build_graph(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_runtime_invoke(agent_dir: Path) -> None:
-    runtime = AgentRuntime(agent_dir=agent_dir)
+    runtime = AgentRuntime(agent_dir=agent_dir, thread_id="custom-thread")
     mock_graph = MagicMock()
     mock_graph.ainvoke = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "I am Cud!"}]})
     runtime.graph = mock_graph
 
     with patch.object(AgentRuntime, "reload", AsyncMock()) as mock_reload:
-        resp = await runtime.invoke("Hello", thread_id="custom-thread")
+        resp = await runtime.invoke("Hello")
         assert resp.content == "I am Cud!"
         mock_graph.ainvoke.assert_awaited_once_with(
             {"messages": [{"role": "user", "content": "Hello"}]},
@@ -116,7 +101,7 @@ async def test_runtime_undo_last_exchange_empty(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_runtime_undo_sends_remove_messages(agent_dir: Path) -> None:
-    runtime = AgentRuntime(agent_dir=agent_dir)
+    runtime = AgentRuntime(agent_dir=agent_dir, thread_id="t-123")
     mock_graph = MagicMock()
     messages = [
         HumanMessage("Question", id="m1"),
@@ -126,7 +111,7 @@ async def test_runtime_undo_sends_remove_messages(agent_dir: Path) -> None:
     mock_graph.aupdate_state = AsyncMock()
     runtime.graph = mock_graph
 
-    result = await runtime.undo_last_exchange(thread_id="t-123")
+    result = await runtime.undo_last_exchange()
     assert result == "Last exchange removed."
     _, update = mock_graph.aupdate_state.await_args.args
     removed = update["messages"]
@@ -139,8 +124,6 @@ async def test_undo_actually_removes_messages_from_state(agent_dir: Path) -> Non
     """Regression: the `messages` channel is reduced by `add_messages`, which
     merges by id. Passing the kept messages back therefore re-adds them, so
     undo must send `RemoveMessage` ids instead."""
-    from langgraph.graph.message import add_messages
-
     messages = [
         HumanMessage("first", id="1"),
         AIMessage("answer one", id="2"),
@@ -207,20 +190,6 @@ async def test_runtime_set_model(agent_dir: Path) -> None:
         mock_reload.assert_awaited_once()
 
 
-@pytest.mark.anyio
-async def test_runtime_undo_triggers_reload_if_graph_none_legacy(agent_dir: Path) -> None:
-    runtime = AgentRuntime(agent_dir=agent_dir)
-    assert runtime.graph is None
-
-    async def fake_reload(self):
-        self.graph = MagicMock()
-        self.graph.aget_state = AsyncMock(return_value=MagicMock(values={"messages": []}))
-
-    with patch.object(AgentRuntime, "_reload_locked", fake_reload):
-        res = await runtime.undo_last_exchange()
-        assert res == "Nothing to undo."
-
-
 def test_runtime_new_session_and_view_memory_empty(agent_dir: Path) -> None:
     runtime = AgentRuntime(agent_dir=agent_dir)
     old_thread = runtime.thread_id
@@ -241,16 +210,6 @@ async def test_runtime_aclose_resets_graph(agent_dir: Path) -> None:
         await runtime.aclose()
         mock_aclose.assert_awaited_once()
         assert runtime.graph is None
-
-
-def test_runtime_close_outside_event_loop(agent_dir: Path) -> None:
-    AgentRuntime(agent_dir=agent_dir).close()
-
-
-@pytest.mark.anyio
-async def test_runtime_close_inside_loop_raises(agent_dir: Path) -> None:
-    with pytest.raises(RuntimeError, match="running event loop"):
-        AgentRuntime(agent_dir=agent_dir).close()
 
 
 @pytest.mark.anyio
@@ -284,6 +243,11 @@ async def test_reload_failure_keeps_previous_graph(agent_dir: Path) -> None:
 
     assert runtime.graph is good, "a failed reload must not drop the live graph"
 
+    with patch.object(AgentRuntime, "_build_graph", AsyncMock(side_effect=RuntimeError("build failed"))):
+        with pytest.raises(RuntimeError, match="build failed"):
+            await runtime.reload()
+    assert runtime.graph is good
+
 
 @pytest.mark.anyio
 async def test_concurrent_invoke_builds_graph_once(agent_dir: Path) -> None:
@@ -309,4 +273,23 @@ async def test_concurrent_invoke_builds_graph_once(agent_dir: Path) -> None:
 def test_runtime_episodic_search_and_prompts(agent_dir: Path) -> None:
     runtime = AgentRuntime(agent_dir=agent_dir)
     assert runtime.load_past_prompts() == []
+    assert runtime.search_past_conversations("query") == []
+
+
+@pytest.mark.anyio
+async def test_reload_keeps_sqlite_checkpointer_open(agent_dir: Path) -> None:
+    runtime = AgentRuntime(agent_dir=agent_dir)
+    captured_saver = None
+
+    def capture_agent(**kwargs):
+        nonlocal captured_saver
+        captured_saver = kwargs["checkpointer"]
+        return MagicMock()
+
+    with patch("cud.agent.runtime.create_deep_agent", side_effect=capture_agent), \
+         patch("cud.agent.runtime.load_mcp_tools_managed", AsyncMock(return_value=[])):
+        await runtime.reload()
+        assert captured_saver is not None
+        await captured_saver.setup()
+        await runtime.aclose()
 

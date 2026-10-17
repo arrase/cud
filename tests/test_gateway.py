@@ -1,111 +1,28 @@
 import argparse
-import asyncio
 import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from cud.config.paths import agent_home, validate_agent_name
 from cud.gateway._discord_utils import send_response, split_message
 from cud.gateway.cli import cmd_gateway_start, cmd_gateway_status, cmd_gateway_stop
-from cud.gateway.run import _run_and_cleanup, run_gateway
-from cud.gateway.scheduler import TaskScheduler, _next_scheduled
+from cud.gateway.run import run_gateway
 from cud.gateway.systemd import (
+    control_service,
+    get_service_status,
     install_unit,
     remove_unit,
     render_unit,
     service_name,
+    uninstall_unit,
     unit_path,
 )
-from cud.tools.tasks import TaskCard
 
 
-def test_next_scheduled_empty() -> None:
-    task, delay = _next_scheduled([])
-    assert task is None
-    assert delay == 0.0
-
-
-def test_next_scheduled_valid(tmp_path: Path) -> None:
-    t1 = TaskCard(
-        name="frequent",
-        description="",
-        schedule="* * * * *",
-        channel_id=None,
-        user_id=None,
-        enabled=True,
-        path=tmp_path / "1",
-        prompt="p1",
-    )
-    t2 = TaskCard(
-        name="infrequent",
-        description="",
-        schedule="0 0 1 1 *",
-        channel_id=None,
-        user_id=None,
-        enabled=True,
-        path=tmp_path / "2",
-        prompt="p2",
-    )
-    best_task, delay = _next_scheduled([t2, t1])
-    assert best_task is t1
-    assert 0 <= delay <= 60
-
-
-def test_next_scheduled_invalid_cron(tmp_path: Path) -> None:
-    invalid = TaskCard(
-        name="bad",
-        description="",
-        schedule="not a cron",
-        channel_id=None,
-        user_id=None,
-        enabled=True,
-        path=tmp_path / "bad",
-        prompt="bad",
-    )
-    valid = TaskCard(
-        name="good",
-        description="",
-        schedule="* * * * *",
-        channel_id=None,
-        user_id=None,
-        enabled=True,
-        path=tmp_path / "good",
-        prompt="good",
-    )
-    best_task, delay = _next_scheduled([invalid, valid])
-    assert best_task is valid
-    assert 0 <= delay <= 60
-
-
-def test_task_scheduler_reload() -> None:
-    mock_gateway = MagicMock()
-    scheduler = TaskScheduler(mock_gateway)
-    assert not scheduler._reload_event.is_set()
-    scheduler.reload()
-    assert scheduler._reload_event.is_set()
-
-
-def test_task_scheduler_load_tasks(tmp_path: Path) -> None:
-    tasks_dir = tmp_path / "workspace" / "tasks"
-    tasks_dir.mkdir(parents=True)
-    t1_dir = tasks_dir / "enabled_task"
-    t1_dir.mkdir()
-    (t1_dir / "TASK.md").write_text(
-        "---\nschedule: '* * * * *'\nenabled: true\n---\nPrompt 1\n", encoding="utf-8"
-    )
-    t2_dir = tasks_dir / "disabled_task"
-    t2_dir.mkdir()
-    (t2_dir / "TASK.md").write_text(
-        "---\nschedule: '* * * * *'\nenabled: false\n---\nPrompt 2\n", encoding="utf-8"
-    )
-
-    mock_gateway = MagicMock()
-    mock_gateway.agent_dir = tmp_path
-    scheduler = TaskScheduler(mock_gateway)
-    loaded = scheduler._load_tasks()
-    assert len(loaded) == 1
-    assert loaded[0].name == "enabled_task"
+def test_split_message_empty() -> None:
+    assert split_message("") == [""]
 
 
 def test_split_message_short() -> None:
@@ -134,19 +51,21 @@ def test_split_message_hard_cut() -> None:
     assert chunks == ["A" * 20, "A" * 20, "A" * 10]
 
 
-def test_send_response_guild() -> None:
+@pytest.mark.anyio
+async def test_send_response_guild() -> None:
     message = MagicMock()
     message.guild = object()
     message.reply = AsyncMock()
-    asyncio.run(send_response(message, "Reply text"))
+    await send_response(message, "Reply text")
     message.reply.assert_awaited_once_with("Reply text")
 
 
-def test_send_response_dm() -> None:
+@pytest.mark.anyio
+async def test_send_response_dm() -> None:
     message = MagicMock()
     message.guild = None
     message.channel.send = AsyncMock()
-    asyncio.run(send_response(message, "DM text"))
+    await send_response(message, "DM text")
     message.channel.send.assert_awaited_once_with("DM text")
 
 
@@ -176,19 +95,89 @@ def test_install_and_remove_unit(
     assert installed.is_file()
     assert "my-agent" in installed.read_text(encoding="utf-8")
 
-    remove_unit("my-agent")
+    assert remove_unit("my-agent") is True
     assert not installed.exists()
+    assert remove_unit("my-agent") is False
+
+
+def test_uninstall_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service"
+    )
+    install_unit("my-agent")
+    mock_systemctl = MagicMock(
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    )
+    monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: True)
+    monkeypatch.setattr("cud.gateway.systemd.systemctl_user", mock_systemctl)
+
+    assert uninstall_unit("my-agent") is True
+    assert mock_systemctl.call_count == 3
+
+
+def test_get_service_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: False)
+    with pytest.raises(RuntimeError, match="systemd is not available"):
+        get_service_status("my-agent")
+
+    monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: True)
+    monkeypatch.setattr(
+        "cud.gateway.systemd.systemctl_user",
+        lambda *_a: subprocess.CompletedProcess(args=[], returncode=0, stdout="active\n", stderr=""),
+    )
+    assert get_service_status("my-agent") == "active"
+
+    monkeypatch.setattr(
+        "cud.gateway.systemd.systemctl_user",
+        lambda *_a: subprocess.CompletedProcess(args=[], returncode=3, stdout="failed\n", stderr=""),
+    )
+    assert get_service_status("my-agent") == "failed"
+
+    monkeypatch.setattr(
+        "cud.gateway.systemd.systemctl_user",
+        lambda *_a: subprocess.CompletedProcess(args=[], returncode=3, stdout="inactive\n", stderr=""),
+    )
+    assert get_service_status("my-agent") == "inactive"
+
+
+def test_control_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="Unsupported systemd action"):
+        control_service("my-agent", "reload")
+
+    monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: False)
+    with pytest.raises(RuntimeError, match="systemd is not available"):
+        control_service("my-agent", "start")
+
+    monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: True)
+    monkeypatch.setattr(
+        "cud.gateway.systemd.systemctl_user",
+        lambda *_a: subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""),
+    )
+    assert control_service("my-agent", "restart") == "Service restarted successfully"
+
+    monkeypatch.setattr(
+        "cud.gateway.systemd.systemctl_user",
+        lambda *_a: subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom"),
+    )
+    with pytest.raises(RuntimeError, match="Failed to stop service: boom"):
+        control_service("my-agent", "stop")
 
 
 def test_cmd_gateway_start_no_systemd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    agent_home("my-agent").mkdir(parents=True)
     monkeypatch.setattr(
         "cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service"
     )
     monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: False)
     args = argparse.Namespace(agent="my-agent")
     assert cmd_gateway_start(args) == 0
+
+
+def test_cmd_gateway_start_nonexistent_agent() -> None:
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        cmd_gateway_start(argparse.Namespace(agent="missing-agent"))
 
 
 def test_cmd_gateway_stop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -219,27 +208,19 @@ def test_cmd_gateway_status(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cmd_gateway_status(args) == 0
 
 
-def test_gateway_run_and_cleanup() -> None:
-    mock_gw = MagicMock()
-    mock_gw.run = AsyncMock()
-    mock_gw.aclose_sessions = AsyncMock()
-    asyncio.run(_run_and_cleanup(mock_gw))
-    mock_gw.run.assert_awaited_once()
-    mock_gw.aclose_sessions.assert_awaited_once()
-
-
 def test_run_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_gw_class = MagicMock()
     mock_instance = MagicMock()
     mock_instance.run = AsyncMock()
-    mock_instance.aclose_sessions = AsyncMock()
     mock_gw_class.return_value = mock_instance
     monkeypatch.setattr("cud.gateway.run.DiscordGateway", mock_gw_class)
 
     run_gateway("test-agent")
     mock_gw_class.assert_called_once_with("test-agent", verbose=False)
     mock_instance.run.assert_awaited_once()
-    mock_instance.aclose_sessions.assert_awaited_once()
+
+    mock_instance.run = AsyncMock(side_effect=KeyboardInterrupt)
+    run_gateway("test-agent", verbose=True)
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +234,6 @@ def test_run_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_systemd_helpers_validate_the_agent_name(name: str) -> None:
     """Regression: the raw name was interpolated into a path that install_unit
     then mkdir'd, so a traversal escaped ~/.config/systemd."""
-    from cud.config.paths import validate_agent_name
-
     for fn in (service_name, unit_path, render_unit):
         with pytest.raises(ValueError, match="agent name must start with"):
             fn(name)
@@ -301,7 +280,10 @@ def test_status_treats_unit_not_found_as_stopped(monkeypatch: pytest.MonkeyPatch
     assert cmd_gateway_status(argparse.Namespace(agent="solo")) == 4
 
 
-def test_start_reports_daemon_reload_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_start_reports_daemon_reload_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_home("solo").mkdir(parents=True)
     monkeypatch.setattr("cud.gateway.cli.systemd.install_unit", MagicMock())
     monkeypatch.setattr("cud.gateway.cli.systemd.systemd_available", lambda: True)
     monkeypatch.setattr(

@@ -4,18 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from pathlib import Path
 from uuid import uuid4
 
 import discord
 from discord.abc import Messageable
+from discord.ext import commands
 
+from cud.agent.runtime import AgentRuntime
 from cud.gateway._discord_utils import split_message
 from cud.tools.tasks import TaskCard, discover_tasks, next_run
-
-if TYPE_CHECKING:
-    from cud.gateway.discord_adapter import DiscordGateway
 
 _log = logging.getLogger(__name__)
 
@@ -27,8 +27,13 @@ class TaskScheduler:
     execution or until :meth:`reload` is called.  No polling.
     """
 
-    def __init__(self, gateway: DiscordGateway) -> None:
-        self.gateway = gateway
+    def __init__(
+        self,
+        agent_dir: Path,
+        get_bot: Callable[[], commands.Bot | None] = lambda: None,
+    ) -> None:
+        self.agent_dir = agent_dir
+        self._get_bot = get_bot
         self._reload_event = asyncio.Event()
 
     # -- public api ----------------------------------------------------------
@@ -39,41 +44,32 @@ class TaskScheduler:
 
     async def run(self) -> None:
         """Main loop — must be launched as an asyncio task."""
-        tasks = self._load_tasks()
         while True:
             try:
+                self._reload_event.clear()
+                tasks = self._load_tasks()
                 task, delay = _next_scheduled(tasks)
 
                 if task is None:
                     # No tasks: sleep indefinitely until reload.
                     await self._reload_event.wait()
-                    self._reload_event.clear()
-                    tasks = self._load_tasks()
                     continue
 
                 # Sleep until the next task fires OR a reload arrives.
                 try:
                     await asyncio.wait_for(self._reload_event.wait(), timeout=delay)
-                    # Reload arrived before the task was due.
-                    self._reload_event.clear()
-                    tasks = self._load_tasks()
                     continue
                 except TimeoutError:
-                    # Timeout expired — time to execute.
-                    pass
-
-                await self._execute(task)
-                tasks = self._load_tasks()
+                    await self._execute(task)
 
             except Exception:
                 _log.exception("Scheduler loop error; retrying in 30s")
                 await asyncio.sleep(30)
-                tasks = self._load_tasks()
 
     # -- internals -----------------------------------------------------------
 
     def _load_tasks(self) -> list[TaskCard]:
-        tasks_dir = self.gateway.agent_dir / "workspace" / "tasks"
+        tasks_dir = self.agent_dir / "workspace" / "tasks"
         return [t for t in discover_tasks(tasks_dir) if t.enabled]
 
     async def _execute(self, task: TaskCard) -> None:
@@ -85,20 +81,17 @@ class TaskScheduler:
             return
 
         thread_id = f"task-{uuid4().hex}"
-        runtime = self.gateway.session(thread_id)
         try:
-            response = await runtime.invoke(task.prompt)
+            async with AgentRuntime(self.agent_dir, thread_id=thread_id) as runtime:
+                response = await runtime.invoke(task.prompt)
             for chunk in split_message(response.content):
                 await target.send(chunk)
         except Exception:
             _log.exception("Task '%s' failed", task.name)
-        finally:
-            self.gateway.sessions.pop(thread_id, None)
-            await runtime.aclose()
 
     async def _resolve_target(self, task: TaskCard) -> Messageable | None:
         """Resolve the Discord destination: channel or DM."""
-        bot = self.gateway.bot
+        bot = self._get_bot()
         if bot is None:
             return None
         if task.channel_id is not None:

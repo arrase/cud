@@ -7,23 +7,19 @@ import pytest
 from prompt_toolkit.formatted_text import HTML
 from rich.console import Console
 
-from cud.config.scaffold import create_agent
+from cud.agent.runtime import AgentRuntime
 from cud.tui.app import (
+    _COMMANDS_META,
+    _PROMPT_MESSAGE,
     _THEME,
     _agent_response,
-    _build_prompt_message,
+    _completer,
     _help_panel,
     _system_message,
     _welcome_banner,
     handle_command,
     run_tui,
 )
-
-
-@pytest.fixture
-def agent_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    return create_agent("tui-agent")
 
 
 def test_ui_display_helpers() -> None:
@@ -44,8 +40,7 @@ def test_ui_display_helpers() -> None:
 
 
 def test_build_prompt_message() -> None:
-    msg = _build_prompt_message()
-    assert isinstance(msg, HTML)
+    assert isinstance(_PROMPT_MESSAGE, HTML)
 
 
 @pytest.mark.anyio
@@ -109,7 +104,7 @@ async def test_handle_command_memory() -> None:
     # memory search no results
     runtime.search_past_conversations = MagicMock(return_value=[])
     assert await handle_command("/memory search docker", runtime, console) is False
-    runtime.search_past_conversations.assert_called_with("docker", limit=5)
+    runtime.search_past_conversations.assert_called_with("docker", 5)
 
     # memory search with results
     runtime.search_past_conversations = MagicMock(return_value=[{
@@ -156,8 +151,7 @@ async def test_handle_command_help_and_unknown() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_tui_agent_not_found(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+async def test_run_tui_agent_not_found() -> None:
     code = await run_tui("nonexistent")
     assert code == 1
 
@@ -167,6 +161,7 @@ async def test_run_tui_prompt_loop(agent_dir: Path) -> None:
     mock_runtime_instance = AsyncMock()
     mock_runtime_instance.__aenter__.return_value = mock_runtime_instance
     mock_runtime_instance.__aexit__.return_value = None
+    mock_runtime_instance.load_past_prompts = MagicMock(return_value=[])
     mock_runtime_instance.invoke.side_effect = [
         MagicMock(content="First response"),
         RuntimeError("Invoke failed"),
@@ -188,7 +183,7 @@ async def test_run_tui_prompt_loop(agent_dir: Path) -> None:
          patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async), \
          patch("cud.tui.app.handle_command", AsyncMock(return_value=False)):
 
-        code = await run_tui("tui-agent", thread_id="th-fixed")
+        code = await run_tui("test-agent", thread_id="th-fixed")
         assert code == 0
         assert mock_runtime_instance.invoke.await_count == 2
 
@@ -198,6 +193,7 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
     mock_runtime_instance = AsyncMock()
     mock_runtime_instance.__aenter__.return_value = mock_runtime_instance
     mock_runtime_instance.__aexit__.return_value = None
+    mock_runtime_instance.load_past_prompts = MagicMock(return_value=[])
 
     async def fake_prompt_async(prompt_msg):
         return "/quit"
@@ -205,7 +201,7 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
     with patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance), \
          patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async):
 
-        code = await run_tui("tui-agent")
+        code = await run_tui("test-agent")
         assert code == 0
 
 
@@ -215,73 +211,59 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_empty_command_does_not_raise(agent_dir: Path) -> None:
+async def test_empty_command_does_not_raise() -> None:
     """Regression: `handle_command("")` raised IndexError on parts[0]."""
     console = Console(file=io.StringIO(), theme=_THEME)
     assert await handle_command("", MagicMock(), console) is False
 
 
 @pytest.mark.anyio
-async def test_memory_search_requires_a_space_before_the_query(agent_dir: Path) -> None:
+async def test_memory_search_requires_a_space_before_the_query() -> None:
     """Regression: `/memory searchable` was split into the query "able"."""
     runtime = MagicMock()
     console = Console(file=io.StringIO(), theme=_THEME)
-    with patch("cud.tui.app._handle_memory_search") as search:
+    with patch("cud.tui.app._handle_memory_search", new_callable=AsyncMock) as search:
         await handle_command("/memory searchable", runtime, console)
     search.assert_not_called()
 
-    with patch("cud.tui.app._handle_memory_search") as search:
+    with patch("cud.tui.app._handle_memory_search", new_callable=AsyncMock) as search:
         await handle_command("/memory search docker", runtime, console)
-    search.assert_called_once()
+    search.assert_awaited_once()
 
 
 @pytest.mark.anyio
-async def test_memory_search_runs_off_the_event_loop(agent_dir: Path) -> None:
+async def test_memory_search_runs_off_the_event_loop() -> None:
     """Regression: the search scans the whole DB synchronously, freezing the loop."""
     runtime = MagicMock()
+    runtime.search_past_conversations.return_value = []
     console = Console(file=io.StringIO(), theme=_THEME)
     real_to_thread = asyncio.to_thread
 
     with patch("cud.tui.app.asyncio.to_thread", wraps=real_to_thread) as to_thread:
-        with patch("cud.tui.app._handle_memory_search"):
-            await handle_command("/memory search docker", runtime, console)
-    to_thread.assert_called_once()
-
-
-@pytest.mark.anyio
-async def test_run_tui_survives_broken_settings(agent_dir: Path) -> None:
-    """Regression: an unreadable settings.yaml killed the TUI at startup."""
-    (agent_dir / "settings.yaml").write_text("model: not-a-mapping\n", encoding="utf-8")
-    with patch("cud.tui.app.PromptSession") as session_cls, \
-         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock):
-        session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
-        assert await run_tui("tui-agent") == 0
+        await handle_command("/memory search docker", runtime, console)
+    to_thread.assert_called_once_with(runtime.search_past_conversations, "docker", 5)
 
 
 @pytest.mark.anyio
 async def test_run_tui_survives_unreadable_history(agent_dir: Path) -> None:
     (agent_dir / "history.db").write_bytes(b"this is not a sqlite database")
-    with patch("cud.tui.app.PromptSession") as session_cls, \
-         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock):
+    with patch("cud.tui.app.PromptSession") as session_cls:
         session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
-        assert await run_tui("tui-agent") == 0
+        assert await run_tui("test-agent") == 0
 
 
 @pytest.mark.anyio
 async def test_run_tui_does_not_block_on_history_load(agent_dir: Path) -> None:
     with patch("cud.tui.app.PromptSession") as session_cls, \
-         patch("cud.tui.app.AgentRuntime", new_callable=MagicMock), \
-         patch("cud.tui.app.load_past_user_prompts", return_value=["a", "b"]), \
+         patch.object(AgentRuntime, "load_past_prompts", return_value=["a", "b"]), \
          patch("cud.tui.app.asyncio.to_thread", wraps=asyncio.to_thread) as to_thread:
         session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
-        assert await run_tui("tui-agent") == 0
+        assert await run_tui("test-agent") == 0
     assert to_thread.call_count >= 1
 
 
 def test_help_panel_and_completer_stay_in_sync() -> None:
     """Regression: /help and the completer were two hand-kept lists that drifted."""
-    from cud.tui.app import _COMMANDS_META, _completer
-
     rendered = io.StringIO()
     _help_panel(Console(file=rendered, theme=_THEME))
     for command in _COMMANDS_META:

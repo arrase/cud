@@ -31,7 +31,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         console.print(f"[red]Ollama unavailable:[/red] {exc}")
         return 1
-    models = [item.get("name", "") for item in data.get("models", [])]
+    models = [item["name"] for item in data.get("models", [])]
     console.print(f"Ollama reachable at {args.base_url}. Models: {', '.join(models) or 'none'}")
     return 0
 

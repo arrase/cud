@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Self
@@ -20,16 +19,25 @@ from langgraph.graph.message import RemoveMessage
 from cud.agent.episodic_memory import (
     create_search_past_conversations_tool,
     load_past_user_prompts,
+    message_role_and_text,
     search_past_conversations_in_db,
 )
 from cud.agent.subagents import build_subagents
 from cud.config.settings import Settings, load_settings, save_settings
 from cud.tools.mcp import load_mcp_tools_managed
 
-_log = logging.getLogger(__name__)
-
 EMPTY_MEMORY = "# Long-Term Memory\n\nNo persistent memories yet.\n"
 NO_TEXT_OUTPUT = "The agent finished without text output."
+
+
+def read_agent_memory(agent_dir: Path) -> str:
+    path = agent_dir / "MEMORY.md"
+    return path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+
+
+def clear_agent_memory(agent_dir: Path) -> str:
+    (agent_dir / "MEMORY.md").write_text(EMPTY_MEMORY, encoding="utf-8")
+    return "Memory cleared."
 
 
 @dataclass(slots=True)
@@ -51,12 +59,6 @@ class AgentRuntime:
 
     def __post_init__(self) -> None:
         self.agent_dir = self.agent_dir.expanduser().resolve()
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
 
     async def __aenter__(self) -> Self:
         return self
@@ -83,15 +85,12 @@ class AgentRuntime:
         agent_md = self.agent_dir / "AGENT.md"
         prompt = agent_md.read_text(encoding="utf-8") if agent_md.exists() else ""
 
-        new_stack: Any = contextlib.AsyncExitStack()
+        new_stack = contextlib.AsyncExitStack()
         try:
             graph = await self._build_graph(settings, prompt, new_stack)
         except BaseException:
             await new_stack.aclose()
             raise
-        # pop_all() is sync and transfers resource ownership to this scope.
-        new_stack.pop_all()
-
         old_stack, self._exit_stack = self._exit_stack, new_stack
         self.settings = settings
         self.prompt = prompt
@@ -107,8 +106,6 @@ class AgentRuntime:
             # while we were waiting, and rebuilding would churn the checkpointer.
             if self.graph is None:
                 await self._reload_locked()
-            if self.graph is None:  # pragma: no cover - reload either sets it or raises
-                raise RuntimeError("graph build produced no graph")
             return self.graph
 
     async def _build_graph(
@@ -161,15 +158,15 @@ class AgentRuntime:
         saver = AsyncSqliteSaver.from_conn_string(str(self.history_db_path))
         return await stack.enter_async_context(saver)
 
-    async def invoke(self, message: str, *, thread_id: str | None = None) -> RuntimeResponse:
+    async def invoke(self, message: str) -> RuntimeResponse:
         graph = await self._ensure_graph()
-        config = {"configurable": {"thread_id": thread_id or self.thread_id}}
+        config = {"configurable": {"thread_id": self.thread_id}}
         raw = await graph.ainvoke({"messages": [{"role": "user", "content": message}]}, config)
         return _response_from_raw(raw)
 
-    async def undo_last_exchange(self, *, thread_id: str | None = None) -> str:
+    async def undo_last_exchange(self) -> str:
         graph = await self._ensure_graph()
-        config = {"configurable": {"thread_id": thread_id or self.thread_id}}
+        config = {"configurable": {"thread_id": self.thread_id}}
         state = await graph.aget_state(config)
         messages = list(state.values.get("messages", []))
         kept = _drop_last_exchange(messages)
@@ -189,14 +186,12 @@ class AgentRuntime:
         return f"New session started (thread: {self.thread_id})."
 
     def view_memory(self) -> str:
-        path = self.agent_dir / "MEMORY.md"
-        return path.read_text(encoding="utf-8") if path.exists() else "Memory is empty."
+        return read_agent_memory(self.agent_dir)
 
     async def clear_memory(self) -> str:
-        path = self.agent_dir / "MEMORY.md"
-        path.write_text(EMPTY_MEMORY, encoding="utf-8")
+        result = clear_agent_memory(self.agent_dir)
         await self.reload()
-        return "Memory cleared."
+        return result
 
     def search_past_conversations(self, query: str, limit: int = 3) -> list[dict[str, Any]]:
         return search_past_conversations_in_db(
@@ -228,15 +223,6 @@ class AgentRuntime:
             await self._exit_stack.aclose()
             self.graph = None
 
-    def close(self) -> None:
-        """Synchronous teardown, for use outside an event loop."""
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(self.aclose())
-            return
-        raise RuntimeError("AgentRuntime.close() cannot be used inside a running event loop; await aclose()")
-
 
 # ---------------------------------------------------------------------------
 # Pure helpers (no state)
@@ -244,7 +230,7 @@ class AgentRuntime:
 
 
 def _response_from_raw(raw: dict[str, Any]) -> RuntimeResponse:
-    return RuntimeResponse(content=_extract_content(raw).strip() or NO_TEXT_OUTPUT)
+    return RuntimeResponse(content=_extract_content(raw) or NO_TEXT_OUTPUT)
 
 
 def _extract_content(raw: dict[str, Any]) -> str:
@@ -254,13 +240,10 @@ def _extract_content(raw: dict[str, Any]) -> str:
     not surface raw tool output as if it were the assistant's answer.
     """
     for message in reversed(raw.get("messages") or []):
-        if isinstance(message, dict):
-            role, content = message.get("type") or message.get("role"), message.get("content")
-        else:
-            role, content = getattr(message, "type", None), getattr(message, "content", None)
+        role, text = message_role_and_text(message)
         # "assistant" is LangChain's legacy alias for the "ai" message type.
-        if str(role).lower() in ("ai", "assistant"):
-            return str(content or "")
+        if role in ("ai", "assistant"):
+            return text
     return ""
 
 
@@ -268,18 +251,10 @@ def _drop_last_exchange(messages: list[Any]) -> list[Any]:
     """Return *messages* without the last user message and everything after it."""
     trimmed = list(messages)
     while trimmed:
-        role = _role(trimmed[-1])
+        role, _ = message_role_and_text(trimmed[-1])
         if role == "system":
             break  # Never remove system messages.
         trimmed.pop()
         if role in ("human", "user"):
             break
     return trimmed
-
-
-def _role(message: Any) -> str:
-    if isinstance(message, dict):
-        return str(message.get("role") or message.get("type") or "").lower()
-    if role := getattr(message, "type", None):
-        return str(role).lower()
-    return message.__class__.__name__.replace("Message", "").lower()

@@ -57,9 +57,8 @@ def test_next_scheduled_invalid_cron(tmp_path: Path) -> None:
     assert delay == 0.0
 
 
-def test_scheduler_reload() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+def test_scheduler_reload(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     assert not scheduler._reload_event.is_set()
     scheduler.reload()
     assert scheduler._reload_event.is_set()
@@ -75,20 +74,18 @@ def test_scheduler_load_tasks(tmp_path: Path) -> None:
     t2.mkdir()
     (t2 / "TASK.md").write_text("---\nschedule: '* * * * *'\nenabled: false\n---\nPrompt 2\n", encoding="utf-8")
 
-    gateway = MagicMock()
-    gateway.agent_dir = tmp_path
-    scheduler = TaskScheduler(gateway)
+    scheduler = TaskScheduler(tmp_path)
     tasks = scheduler._load_tasks()
     assert len(tasks) == 1
     assert tasks[0].name == "t1"
 
 
 @pytest.mark.anyio
-async def test_resolve_target_channel() -> None:
-    gateway = MagicMock()
+async def test_resolve_target_channel(tmp_path: Path) -> None:
+    bot = MagicMock()
     channel_mock = MagicMock(spec=discord.abc.Messageable)
-    gateway.bot.get_channel.return_value = channel_mock
-    scheduler = TaskScheduler(gateway)
+    bot.get_channel.return_value = channel_mock
+    scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=999, user_id=None,
@@ -96,33 +93,33 @@ async def test_resolve_target_channel() -> None:
     )
     target = await scheduler._resolve_target(task)
     assert target is channel_mock
-    gateway.bot.get_channel.assert_called_once_with(999)
+    bot.get_channel.assert_called_once_with(999)
 
 
 @pytest.mark.anyio
-async def test_resolve_target_channel_cache_miss_fetches() -> None:
+async def test_resolve_target_channel_cache_miss_fetches(tmp_path: Path) -> None:
     """A cache miss must not discard the result of a full agent run."""
-    gateway = MagicMock()
+    bot = MagicMock()
     channel_mock = MagicMock(spec=discord.abc.Messageable)
-    gateway.bot.get_channel.return_value = None
-    gateway.bot.fetch_channel = AsyncMock(return_value=channel_mock)
-    scheduler = TaskScheduler(gateway)
+    bot.get_channel.return_value = None
+    bot.fetch_channel = AsyncMock(return_value=channel_mock)
+    scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=999, user_id=None,
         enabled=True, path=Path("/t"), prompt="p"
     )
     assert await scheduler._resolve_target(task) is channel_mock
-    gateway.bot.fetch_channel.assert_awaited_once_with(999)
+    bot.fetch_channel.assert_awaited_once_with(999)
 
 
 @pytest.mark.anyio
-async def test_resolve_target_rejects_non_messageable_channel() -> None:
+async def test_resolve_target_rejects_non_messageable_channel(tmp_path: Path) -> None:
     """CategoryChannel is not Messageable: sending would raise AttributeError."""
-    gateway = MagicMock()
-    gateway.bot.get_channel.return_value = MagicMock(spec=[])  # not Messageable
-    gateway.bot.fetch_channel = AsyncMock(side_effect=AssertionError("must not fetch"))
-    scheduler = TaskScheduler(gateway)
+    bot = MagicMock()
+    bot.get_channel.return_value = MagicMock(spec=[])  # not Messageable
+    bot.fetch_channel = AsyncMock(side_effect=AssertionError("must not fetch"))
+    scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=999, user_id=None,
@@ -132,14 +129,14 @@ async def test_resolve_target_rejects_non_messageable_channel() -> None:
 
 
 @pytest.mark.anyio
-async def test_resolve_target_user() -> None:
+async def test_resolve_target_user(tmp_path: Path) -> None:
     """Falls back to a DM when the channel cannot be resolved."""
-    gateway = MagicMock()
-    gateway.bot.get_channel.return_value = None
-    gateway.bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "gone"))
+    bot = MagicMock()
+    bot.get_channel.return_value = None
+    bot.fetch_channel = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "gone"))
     user_mock = MagicMock()
-    gateway.bot.fetch_user = AsyncMock(return_value=user_mock)
-    scheduler = TaskScheduler(gateway)
+    bot.fetch_user = AsyncMock(return_value=user_mock)
+    scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=999, user_id=888,
@@ -147,15 +144,15 @@ async def test_resolve_target_user() -> None:
     )
     target = await scheduler._resolve_target(task)
     assert target is user_mock
-    gateway.bot.fetch_user.assert_awaited_once_with(888)
+    bot.fetch_user.assert_awaited_once_with(888)
 
 
 @pytest.mark.anyio
-async def test_resolve_target_user_exception() -> None:
-    gateway = MagicMock()
-    gateway.bot.get_channel.return_value = None
-    gateway.bot.fetch_user = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "no such user"))
-    scheduler = TaskScheduler(gateway)
+async def test_resolve_target_user_exception(tmp_path: Path) -> None:
+    bot = MagicMock()
+    bot.get_channel.return_value = None
+    bot.fetch_user = AsyncMock(side_effect=discord.NotFound(MagicMock(status=404), "no such user"))
+    scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=None, user_id=888,
@@ -166,9 +163,8 @@ async def test_resolve_target_user_exception() -> None:
 
 
 @pytest.mark.anyio
-async def test_resolve_target_none() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+async def test_resolve_target_none(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=None, user_id=None,
         enabled=True, path=Path("/t"), prompt="p"
@@ -176,16 +172,18 @@ async def test_resolve_target_none() -> None:
     target = await scheduler._resolve_target(task)
     assert target is None
 
+    bot = MagicMock()
+    scheduler_with_bot = TaskScheduler(tmp_path, lambda: bot)
+    assert await scheduler_with_bot._resolve_target(task) is None
+
 
 @pytest.mark.anyio
-async def test_execute_success() -> None:
-    gateway = MagicMock()
+async def test_execute_success(tmp_path: Path) -> None:
     runtime_mock = AsyncMock()
+    runtime_mock.__aenter__.return_value = runtime_mock
     runtime_mock.invoke.return_value = MagicMock(content="Hello from scheduler!")
-    gateway.session.return_value = runtime_mock
-    gateway.sessions = {"some_thread": runtime_mock}
 
-    scheduler = TaskScheduler(gateway)
+    scheduler = TaskScheduler(tmp_path)
     target_mock = AsyncMock()
     scheduler._resolve_target = AsyncMock(return_value=target_mock)
 
@@ -193,60 +191,54 @@ async def test_execute_success() -> None:
         name="t", description="", schedule="*", channel_id=1, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"
     )
-    await scheduler._execute(task)
+    with patch("cud.gateway.scheduler.AgentRuntime", return_value=runtime_mock) as mock_cls:
+        await scheduler._execute(task)
 
-    runtime_mock.invoke.assert_awaited_once()
+    mock_cls.assert_called_once()
+    runtime_mock.invoke.assert_awaited_once_with("do it")
     target_mock.send.assert_awaited_once_with("Hello from scheduler!")
-    runtime_mock.aclose.assert_awaited_once()
+    runtime_mock.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.anyio
-async def test_execute_no_target_skips_run() -> None:
+async def test_execute_no_target_skips_run(tmp_path: Path) -> None:
     """Regression: the target is resolved *before* the agent runs, so an
     unresolvable destination no longer burns a full invocation."""
-    gateway = MagicMock()
-    runtime_mock = AsyncMock()
-    runtime_mock.invoke.return_value = MagicMock(content="Hello")
-    gateway.session.return_value = runtime_mock
-    gateway.sessions = {}
-
-    scheduler = TaskScheduler(gateway)
+    scheduler = TaskScheduler(tmp_path)
     scheduler._resolve_target = AsyncMock(return_value=None)
 
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=None, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"
     )
-    await scheduler._execute(task)
+    with patch("cud.gateway.scheduler.AgentRuntime") as mock_cls:
+        await scheduler._execute(task)
 
-    runtime_mock.invoke.assert_not_called()
-    gateway.session.assert_not_called()
+    mock_cls.assert_not_called()
 
 
 @pytest.mark.anyio
-async def test_execute_invoke_exception() -> None:
-    gateway = MagicMock()
+async def test_execute_invoke_exception(tmp_path: Path) -> None:
     runtime_mock = AsyncMock()
+    runtime_mock.__aenter__.return_value = runtime_mock
     runtime_mock.invoke.side_effect = RuntimeError("invoke failed")
-    gateway.session.return_value = runtime_mock
-    gateway.sessions = {}
 
-    scheduler = TaskScheduler(gateway)
+    scheduler = TaskScheduler(tmp_path)
     scheduler._resolve_target = AsyncMock(return_value=MagicMock(send=AsyncMock()))
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=1, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"
     )
-    await scheduler._execute(task)
+    with patch("cud.gateway.scheduler.AgentRuntime", return_value=runtime_mock):
+        await scheduler._execute(task)
 
-    runtime_mock.invoke.assert_awaited_once()
-    runtime_mock.aclose.assert_awaited_once()
+    runtime_mock.invoke.assert_awaited_once_with("do it")
+    runtime_mock.__aexit__.assert_awaited_once()
 
 
 @pytest.mark.anyio
-async def test_run_no_tasks_then_reload() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+async def test_run_no_tasks_then_reload(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     scheduler._load_tasks = MagicMock(return_value=[])
 
     call_count = 0
@@ -267,9 +259,8 @@ async def test_run_no_tasks_then_reload() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_timeout_executes_task() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+async def test_run_timeout_executes_task(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=1, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"
@@ -294,9 +285,8 @@ async def test_run_timeout_executes_task() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_reload_before_timeout() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+async def test_run_reload_before_timeout(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
         name="t", description="", schedule="*", channel_id=1, user_id=None,
         enabled=True, path=Path("/t"), prompt="do it"
@@ -304,14 +294,13 @@ async def test_run_reload_before_timeout() -> None:
     scheduler._load_tasks = MagicMock(return_value=[task])
     scheduler._execute = AsyncMock()
 
-    scheduler.reload()  # sets _reload_event so wait_for returns immediately
-
     call_count = 0
 
     def fake_next_scheduled(tasks):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
+            scheduler.reload()  # sets _reload_event so wait_for returns immediately
             return task, 100.0
         raise asyncio.CancelledError()
 
@@ -323,9 +312,8 @@ async def test_run_reload_before_timeout() -> None:
 
 
 @pytest.mark.anyio
-async def test_run_loop_exception_retry() -> None:
-    gateway = MagicMock()
-    scheduler = TaskScheduler(gateway)
+async def test_run_loop_exception_retry(tmp_path: Path) -> None:
+    scheduler = TaskScheduler(tmp_path)
     scheduler._load_tasks = MagicMock(side_effect=[[], asyncio.CancelledError()])
 
     with patch("cud.gateway.scheduler._next_scheduled", side_effect=RuntimeError("unexpected")):

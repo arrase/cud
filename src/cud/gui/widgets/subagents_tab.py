@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import shlex
-import urllib.parse
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -22,34 +18,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from cud.config.settings import SubAgentMCPServer, SubAgentSettings
+from cud.config.settings import (
+    SubAgentSettings,
+    format_subagent_mcp_server,
+    parse_subagent_mcp_servers,
+)
 from cud.gui.core.styles import (
     ACTION_BTN_ADD,
     ACTION_BTN_DELETE,
     ACTION_BTN_UPDATE,
     LIST_STYLE,
     create_action_button,
+    create_tab_header,
     monospace_font,
 )
-
-# Trailing marker used to round-trip env vars through the plain-text editor.
-ENV_MARKER = "env:"
-
-
-def _format_mcp_server(srv: SubAgentMCPServer) -> str:
-    """Render one MCP server as a single lossless editable line.
-
-    Env values are percent-encoded so commas, spaces and ``=`` inside a value
-    survive the round trip intact.
-    """
-    line = shlex.join([srv.name, srv.command, *srv.args])
-    if srv.env:
-        encoded = ",".join(
-            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
-            for k, v in srv.env.items()
-        )
-        line = f"{line} {ENV_MARKER}[{encoded}]"
-    return line
 
 
 class SubagentsTab(QWidget):
@@ -64,18 +46,12 @@ class SubagentsTab(QWidget):
         self.main_layout.setContentsMargins(16, 16, 16, 16)
         self.main_layout.setSpacing(12)
 
-        # Title
-        self.title_label = QLabel("Subagents Topology")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.main_layout.addWidget(self.title_label)
-
-        self.desc_label = QLabel(
+        create_tab_header(
+            self.main_layout,
+            "Subagents Topology",
             "Manage the hierarchy of subagents and specialized assistants that this agent "
-            "can delegate and orchestrate to solve complex tasks."
+            "can delegate and orchestrate to solve complex tasks.",
         )
-        self.desc_label.setWordWrap(True)
-        self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
-        self.main_layout.addWidget(self.desc_label)
 
         # Split layout
         self.split_layout = QHBoxLayout()
@@ -215,7 +191,7 @@ class SubagentsTab(QWidget):
         self.input_skills.setText(", ".join(sa.skills_paths))
 
         # Serialize MCP servers to readable, lossless lines
-        mcp_lines = [_format_mcp_server(srv) for srv in sa.mcp_servers]
+        mcp_lines = [format_subagent_mcp_server(srv) for srv in sa.mcp_servers]
         self.input_mcp.setPlainText("\n".join(mcp_lines))
 
     def _on_add_clicked(self) -> None:
@@ -273,7 +249,7 @@ class SubagentsTab(QWidget):
         skills_paths = sorted({s.strip() for s in skills_text.split(",") if s.strip()}) if skills_text else []
 
         # Parse MCP servers
-        mcp_servers = self._parse_mcp_servers(self.input_mcp.toPlainText())
+        mcp_servers = parse_subagent_mcp_servers(self.input_mcp.toPlainText())
 
         sa = self._subagents[self._selected_index]
         sa.name = name
@@ -288,38 +264,3 @@ class SubagentsTab(QWidget):
         self._refresh_list()
         self.subagent_list.setCurrentRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Subagent '{name}' updated in memory.")
-
-    @staticmethod
-    def _parse_mcp_servers(text: str) -> list[SubAgentMCPServer]:
-        """Parse MCP server definitions from multi-line text.
-
-        Each line is ``name command arg1 arg2 ... [env:KEY=VALUE,...]``.
-        Arguments are shlex-quoted and env values percent-encoded, so values
-        containing spaces, commas or ``=`` survive the round trip.
-        """
-        servers: list[SubAgentMCPServer] = []
-        for line in text.strip().splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            env: dict[str, str] = {}
-            if line.endswith("]") and ENV_MARKER in line:
-                line, _, env_blob = line.rpartition(ENV_MARKER)
-                line = line.rstrip()
-                for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
-                    key, sep, value = pair.partition("=")
-                    if sep:
-                        env[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
-            try:
-                parts = shlex.split(line)
-            except ValueError:
-                continue  # Unbalanced quotes: skip the line rather than corrupt the config.
-            if len(parts) < 2:
-                continue
-            servers.append(SubAgentMCPServer(
-                name=parts[0],
-                command=parts[1],
-                args=parts[2:],
-                env=env,
-            ))
-        return servers

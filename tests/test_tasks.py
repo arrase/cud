@@ -1,28 +1,33 @@
 import argparse
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
-from cud.config.paths import agent_home
-from cud.config.scaffold import create_agent
+from cud.tools.cli import _task_destination, cmd_task_list, register_tasks_commands
 from cud.tools.tasks import (
     TaskCard,
     _int_or_none,
-    _task_destination,
-    cmd_task_list,
     discover_tasks,
-    register_task_commands,
+    is_valid_schedule,
+    next_run,
+    save_tasks,
 )
 
 
 def test_int_or_none() -> None:
     assert _int_or_none(None) is None
+    assert _int_or_none(True) is None
+    assert _int_or_none(False) is None
     assert _int_or_none("123") == 123
     assert _int_or_none(456) == 456
     assert _int_or_none("invalid") is None
     assert _int_or_none([]) is None
+
+
+def test_is_valid_schedule() -> None:
+    assert is_valid_schedule("0 9 * * *") is True
+    assert is_valid_schedule("") is False
+    assert is_valid_schedule("not a cron") is False
 
 
 def test_discover_tasks_nonexistent(tmp_path: Path) -> None:
@@ -84,16 +89,14 @@ def test_discover_tasks_missing_prompt(tmp_path: Path) -> None:
     assert discover_tasks(tmp_path) == []
 
 
-def test_cmd_task_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    create_agent("test-agent")
+def test_cmd_task_list(agent_dir: Path) -> None:
     args = argparse.Namespace(agent="test-agent")
 
     # Empty list
     assert cmd_task_list(args) == 0
 
     # With tasks
-    tasks_dir = agent_home("test-agent") / "workspace" / "tasks"
+    tasks_dir = agent_dir / "workspace" / "tasks"
     task1 = tasks_dir / "task1"
     task1.mkdir()
     (task1 / "TASK.md").write_text(
@@ -125,13 +128,48 @@ def test_discover_tasks_exception(tmp_path: Path) -> None:
         assert discover_tasks(tmp_path) == []
 
 
-def test_register_task_commands() -> None:
+def test_register_tasks_commands() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers()
-    register_task_commands(sub)
+    register_tasks_commands(sub)
 
     args = parser.parse_args(["task", "list", "my-agent"])
     assert args.agent == "my-agent"
+
+
+def test_save_tasks_writes_and_removes(tmp_path: Path) -> None:
+    entries = [
+        {
+            "name": "daily",
+            "description": "d",
+            "schedule": "0 9 * * *",
+            "channel_id": 10,
+            "user_id": 20,
+            "enabled": True,
+            "prompt": "do it",
+            "dir_name": "daily",
+        },
+        {
+            "name": "bad",
+            "description": "",
+            "schedule": "0 9 * * *",
+            "channel_id": None,
+            "user_id": None,
+            "enabled": True,
+            "prompt": "do it",
+            "dir_name": "_unsafe",
+        },
+    ]
+    old = tmp_path / "gone"
+    old.mkdir()
+    (old / "TASK.md").write_text("old", encoding="utf-8")
+
+    skipped = save_tasks(tmp_path, entries, deleted_dirs=["gone", "_unsafe"])
+    assert skipped == ["_unsafe"]
+    assert not old.exists()
+    cards = discover_tasks(tmp_path)
+    assert len(cards) == 1
+    assert cards[0].name == "daily"
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +208,6 @@ def test_task_card_is_hashable(tmp_path: Path) -> None:
 
 
 def test_next_run_returns_none_for_never_firing_expression() -> None:
-    from datetime import datetime
-
-    from cud.tools.tasks import next_run
-
     now = datetime(2026, 1, 1, tzinfo=UTC)
     assert next_run("0 0 30 2 *", now) is None
     assert next_run("not a cron", now) is None
@@ -194,29 +228,3 @@ def test_unreadable_task_file_is_skipped_not_fatal(tmp_path: Path) -> None:
     (bad / "TASK.md").write_bytes(b"---\nname: \xff\n---\nx")
     _write_task(tmp_path, "good", "name: good\nschedule: '* * * * *'")
     assert [t.name for t in discover_tasks(tmp_path)] == ["good"]
-
-
-def test_frontmatter_without_trailing_newline_is_parsed(tmp_path: Path) -> None:
-    """Regression: the regex required a newline after the closing `---`, so a
-    hand-written file ending at the delimiter parsed as having no frontmatter
-    and the task vanished from the scheduler."""
-    from cud.tools._frontmatter import parse_frontmatter
-
-    exact = "---\nname: b\nschedule: '* * * * *'\n---"
-    assert parse_frontmatter(exact)[0] == {"name": "b", "schedule": "* * * * *"}
-    assert parse_frontmatter(exact + "\n")[0] == {"name": "b", "schedule": "* * * * *"}
-    assert parse_frontmatter(exact + "\n\nbody")[1].strip() == "body"
-
-    _write_task(tmp_path, "a", "name: a\nschedule: '* * * * *'")
-    d = tmp_path / "b"
-    d.mkdir()
-    # Ends exactly at the closing delimiter, with no trailing newline.
-    (d / "TASK.md").write_text(exact + "\n\ndo the thing", encoding="utf-8")
-    assert [t.name for t in discover_tasks(tmp_path)] == ["a", "b"]
-
-
-def test_task_without_prompt_is_dropped(tmp_path: Path) -> None:
-    d = tmp_path / "a"
-    d.mkdir()
-    (d / "TASK.md").write_text("---\nname: a\nschedule: '* * * * *'\n---\n", encoding="utf-8")
-    assert discover_tasks(tmp_path) == []

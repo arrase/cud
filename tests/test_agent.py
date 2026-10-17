@@ -1,17 +1,12 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-import pytest
-
 from cud.agent.runtime import (
     AgentRuntime,
     _drop_last_exchange,
     _extract_content,
     _response_from_raw,
-    _role,
 )
-from cud.agent.subagents import _resolve_env
-from cud.config.scaffold import create_agent
 
 
 @dataclass
@@ -62,16 +57,6 @@ def test_response_from_raw() -> None:
     assert resp_empty.content == "The agent finished without text output."
 
 
-def test_role() -> None:
-    assert _role({"role": "human"}) == "human"
-    assert _role({"type": "ai"}) == "ai"
-
-    class HumanMessage:
-        pass
-
-    assert _role(HumanMessage()) == "human"
-
-
 def test_drop_last_exchange() -> None:
     messages = [
         {"role": "system", "content": "system prompt"},
@@ -104,11 +89,7 @@ def test_drop_last_exchange_preserves_system() -> None:
     assert trimmed_no_user == [{"role": "system", "content": "system prompt"}]
 
 
-def test_runtime_session_and_memory(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    agent_dir = create_agent("test-agent")
+def test_runtime_session_and_memory(agent_dir: Path) -> None:
     runtime = AgentRuntime(agent_dir=agent_dir)
 
     assert runtime.workspace_dir == agent_dir / "workspace"
@@ -119,12 +100,3 @@ def test_runtime_session_and_memory(
 
     memory_content = runtime.view_memory()
     assert "Memory" in memory_content
-
-
-def test_resolve_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TEST_VAR", "secret123")
-    resolved = _resolve_env({"API_KEY": "${TEST_VAR}", "STATIC": "fixed"})
-    assert resolved == {"API_KEY": "secret123", "STATIC": "fixed"}
-
-    monkeypatch.delenv("MISSING_VAR", raising=False)
-    assert _resolve_env({"API_KEY": "${MISSING_VAR}"}) is None

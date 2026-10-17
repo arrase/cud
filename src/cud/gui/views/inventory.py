@@ -55,13 +55,19 @@ class AgentItemDelegate(QStyledItemDelegate):
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Get metadata roles
-        name = index.data(Qt.ItemDataRole.DisplayRole)
-        status = index.data(Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET) or "inactive"
-        home_path = index.data(Qt.ItemDataRole.UserRole + PATH_ROLE_OFFSET) or ""
+        name = str(index.data(Qt.ItemDataRole.DisplayRole))
+        rect = option.rect
+
+        if not (option.state & QStyle.StateFlag.State_Enabled):
+            painter.setPen(QColor("#8A8A8F"))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, name)
+            painter.restore()
+            return
+
+        status = str(index.data(Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET))
+        home_path = str(index.data(Qt.ItemDataRole.UserRole + PATH_ROLE_OFFSET))
 
         # Rect geometries
-        rect = option.rect
         card_rect = QRectF(rect.x() + 8, rect.y() + 6, rect.width() - 16, rect.height() - 12)
 
         # Background card color based on states
@@ -109,7 +115,7 @@ class AgentItemDelegate(QStyledItemDelegate):
         name_font.setPointSize(11)
         painter.setFont(name_font)
         painter.setPen(QColor("#FFFFFF"))
-        painter.drawText(int(text_x), int(title_y), str(name))
+        painter.drawText(int(text_x), int(title_y), name)
 
         # Draw details text
         sub_font = QFont(painter.font())
@@ -118,7 +124,12 @@ class AgentItemDelegate(QStyledItemDelegate):
         painter.setFont(sub_font)
         painter.setPen(QColor("#8A8A8F"))
 
-        display_path = home_path.replace(str(HOME_PATH), "~")
+        home_prefix = str(HOME_PATH)
+        display_path = (
+            f"~{home_path.removeprefix(home_prefix)}"
+            if home_path.startswith(home_prefix)
+            else home_path
+        )
         painter.drawText(int(text_x), int(sub_y), f"{display_path}  •  Status: {status}")
 
         painter.restore()
@@ -200,27 +211,29 @@ class InventoryView(QWidget):
             # Async Status Query via QThreadPool
             worker = SystemdWorker("status", agent_name)
             worker.signals.status_checked.connect(
-                partial(self._on_status_checked, generation))
+                partial(self._on_status_checked, generation)
+            )
             worker.signals.error.connect(partial(self._on_status_error, generation))
-            worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
-            worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            worker.signals.finished.connect(partial(self._finish_worker, worker))
+            worker.signals.error.connect(partial(self._finish_worker, worker))
             self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
+
+    def _finish_worker(self, worker: SystemdWorker, *_args: object) -> None:
+        self._active_workers.discard(worker)
+        worker.signals.deleteLater()
 
     def _set_status(self, agent_name: str, status: str) -> None:
         for row in range(self.model.rowCount()):
             item = self.model.item(row)
-            if item and item.text() == agent_name:
+            if item.text() == agent_name:
                 item.setData(status, Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET)
                 return
 
     def _on_status_checked(self, generation: int, agent_name: str, is_active: bool, status_text: str) -> None:
         if generation != self._generation:
             return
-        status = "active" if is_active else "inactive"
-        if "failed" in status_text or "error" in status_text:
-            status = "failed"
-        self._set_status(agent_name, status)
+        self._set_status(agent_name, status_text)
 
     def _on_status_error(self, generation: int, action: str, agent_name: str, error_message: str) -> None:
         if generation != self._generation:
@@ -257,5 +270,5 @@ class InventoryView(QWidget):
 
     def on_agent_double_clicked(self, index: QModelIndex) -> None:
         item = self.model.itemFromIndex(index)
-        if item and item.isEnabled():
+        if item.isEnabled():
             self.agent_selected.emit(item.text())

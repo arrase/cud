@@ -6,20 +6,14 @@ import shlex
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
-    QHeaderView,
-    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -28,20 +22,20 @@ from cud.gui.core.styles import (
     ACTION_BTN_ADD,
     ACTION_BTN_DELETE,
     ACTION_BTN_UPDATE,
-    TABLE_STYLE,
     create_action_button,
+    create_readonly_table,
+    create_tab_header,
+    make_table_item,
 )
-from cud.tools.mcp import DEFAULT_TRANSPORT, TRANSPORTS, MCPConfig, load_mcp_config, save_mcp_config
-
-
-def _parse_env_text(text: str) -> dict[str, str]:
-    env_dict: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if line and "=" in line:
-            k, v = line.split("=", 1)
-            env_dict[k.strip()] = v.strip()
-    return env_dict
+from cud.tools.mcp import (
+    DEFAULT_TRANSPORT,
+    TRANSPORTS,
+    MCPConfig,
+    free_server_name,
+    load_mcp_config,
+    parse_env_pairs,
+    save_mcp_config,
+)
 
 
 class MCPTab(QWidget):
@@ -49,24 +43,18 @@ class MCPTab(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.agent_dir: Path | None = None
         self.current_config = MCPConfig()
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 16, 16, 16)
         self.main_layout.setSpacing(12)
 
-        # Title
-        self.title_label = QLabel("Model Context Protocol (MCP)")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.main_layout.addWidget(self.title_label)
-
-        self.desc_label = QLabel(
+        create_tab_header(
+            self.main_layout,
+            "Model Context Protocol (MCP)",
             "Connect your agent with external tools and data sources via MCP servers "
-            "(Stdio or HTTP SSE)."
+            "(Stdio or HTTP SSE).",
         )
-        self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA;")
-        self.main_layout.addWidget(self.desc_label)
 
         # Main horizontal split
         self.split_layout = QHBoxLayout()
@@ -76,14 +64,9 @@ class MCPTab(QWidget):
         self.left_col = QVBoxLayout()
         self.left_col.setSpacing(8)
 
-        self.servers_table = QTableWidget()
-        self.servers_table.setColumnCount(3)
-        self.servers_table.setHorizontalHeaderLabels(["Name", "Transport", "Destination"])
-        self.servers_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.servers_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.servers_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.servers_table.setAlternatingRowColors(True)
-        self.servers_table.setStyleSheet(TABLE_STYLE)
+        self.servers_table = create_readonly_table(
+            ["Name", "Transport", "Destination"], stretch_column=2
+        )
         self.servers_table.itemSelectionChanged.connect(self.on_server_selected)
         self.left_col.addWidget(self.servers_table, 1)
 
@@ -123,6 +106,7 @@ class MCPTab(QWidget):
 
         # Connected last: the handler touches input_args/input_env.
         self.input_transport.currentTextChanged.connect(self.on_transport_changed)
+        self.on_transport_changed(self.input_transport.currentText())
 
         self.form_layout.addRow("Server Name:", self.input_name)
         self.form_layout.addRow("Transport Type:", self.input_transport)
@@ -168,8 +152,9 @@ class MCPTab(QWidget):
 
     def load_data(self, agent_dir: Path) -> None:
         """Load and parse mcp.json."""
-        self.agent_dir = agent_dir
         self.current_config = load_mcp_config(agent_dir)
+        self.input_transport.clear()
+        self.input_transport.addItems(list(TRANSPORTS))
 
         # Allowed / Disabled tools inputs
         self.input_allowed.setText(", ".join(self.current_config.allowed_tools))
@@ -185,25 +170,9 @@ class MCPTab(QWidget):
             transport = server_data.get("transport") or DEFAULT_TRANSPORT
             dest = str(server_data.get("url") or "") if transport != "stdio" else str(server_data.get("command") or "")
 
-            # Set items
-            name_item = QTableWidgetItem(name)
-            name_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            name_item.setForeground(QColor("#FFFFFF"))
-            font_bold = name_item.font()
-            font_bold.setBold(True)
-            name_item.setFont(font_bold)
-            self.servers_table.setItem(idx, 0, name_item)
-
-            transport_item = QTableWidgetItem(transport)
-            transport_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            self.servers_table.setItem(idx, 1, transport_item)
-
-            dest_item = QTableWidgetItem(dest)
-            dest_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            font_mono = dest_item.font()
-            font_mono.setFamily("monospace")
-            dest_item.setFont(font_mono)
-            self.servers_table.setItem(idx, 2, dest_item)
+            self.servers_table.setItem(idx, 0, make_table_item(name, color="#FFFFFF", bold=True))
+            self.servers_table.setItem(idx, 1, make_table_item(transport))
+            self.servers_table.setItem(idx, 2, make_table_item(dest, mono=True))
 
         # Clear form fields
         self.clear_form()
@@ -214,7 +183,7 @@ class MCPTab(QWidget):
         `selectedItems()[0]` is not guaranteed to be column 0, so read the
         name cell of the selected row explicitly.
         """
-        items = self.servers_table.selectionModel().selectedRows() if self.servers_table.model() else []
+        items = self.servers_table.selectionModel().selectedRows()
         if not items:
             return None
         item = self.servers_table.item(items[0].row(), 0)
@@ -234,6 +203,7 @@ class MCPTab(QWidget):
         self.selected_server_name = ""
         self.input_name.clear()
         self.input_transport.setCurrentIndex(0)
+        self.on_transport_changed(self.input_transport.currentText())
         self.input_cmd_url.clear()
         self.input_args.clear()
         self.input_env.clear()
@@ -245,10 +215,7 @@ class MCPTab(QWidget):
             self.clear_form()
             return
 
-        server_data = self.current_config.servers.get(name)
-        if server_data is None:
-            self.clear_form()
-            return
+        server_data = self.current_config.servers[name]
 
         self.selected_server_name = name
         self.input_name.setText(name)
@@ -276,11 +243,7 @@ class MCPTab(QWidget):
 
     def on_add_clicked(self) -> None:
         """Add a new empty/default server entry to edit."""
-        new_name = "new-server"
-        idx = 1
-        while new_name in self.current_config.servers:
-            new_name = f"new-server-{idx}"
-            idx += 1
+        new_name = free_server_name(self.current_config.servers, "new-server-")
 
         self.current_config.servers[new_name] = {
             "transport": "stdio",
@@ -307,8 +270,7 @@ class MCPTab(QWidget):
         )
 
         if confirm == QMessageBox.StandardButton.Yes:
-            if name in self.current_config.servers:
-                del self.current_config.servers[name]
+            del self.current_config.servers[name]
             self.refresh_table()
 
     def _build_server_data(self, transport: str, cmd_or_url: str) -> dict[str, Any] | None:
@@ -322,13 +284,17 @@ class MCPTab(QWidget):
         if args_str:
             try:
                 server_data["args"] = shlex.split(args_str)
-            except Exception as e:
+            except ValueError as e:
                 QMessageBox.critical(self, "Arguments Error", f"Error parsing arguments: {e}")
                 return None
         else:
             server_data["args"] = []
 
-        env_dict = _parse_env_text(self.input_env.toPlainText())
+        try:
+            env_dict = parse_env_pairs(self.input_env.toPlainText().splitlines())
+        except ValueError as e:
+            QMessageBox.critical(self, "Environment Error", str(e))
+            return None
         if env_dict:
             server_data["env"] = env_dict
         return server_data

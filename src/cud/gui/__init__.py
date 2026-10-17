@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 import sys
 
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
-from cud.gui.core.styles import DARK_STYLESHEET, ICON_PATH
+from cud.gui.core.styles import DARK_STYLESHEET, ICON_PATH, ui_font
 from cud.gui.dashboard import MainWindow
 
 
@@ -21,15 +21,7 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setStyleSheet(DARK_STYLESHEET)
     app.setWindowIcon(QIcon(str(ICON_PATH)))
-
-    font = QFont("Outfit")
-    if not font.exactMatch():
-        font = QFont("Inter")
-        if not font.exactMatch():
-            font = QFont("sans-serif")
-    font.setStyleHint(QFont.StyleHint.SansSerif)
-    font.setPointSize(10)
-    app.setFont(font)
+    app.setFont(ui_font())
 
     window = MainWindow()
     window.show()

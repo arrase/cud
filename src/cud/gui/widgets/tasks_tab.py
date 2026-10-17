@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from croniter import croniter
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -17,28 +13,30 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
-    QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from cud.config.paths import validate_safe_name
 from cud.gui.core.styles import (
     ACTION_BTN_ADD,
     ACTION_BTN_DELETE,
     ACTION_BTN_UPDATE,
-    TABLE_STYLE,
     create_action_button,
+    create_readonly_table,
+    create_tab_header,
+    make_table_item,
     monospace_font,
 )
-from cud.tools._frontmatter import render_frontmatter
-from cud.tools.skills import is_safe_dir_name, valid_dir_name
-from cud.tools.tasks import discover_tasks, next_run
+from cud.tools.tasks import (
+    discover_tasks,
+    is_valid_schedule,
+    next_run,
+    save_tasks,
+)
 
 
 def _parse_optional_int(text: str, label: str) -> int | None:
@@ -52,49 +50,11 @@ def _parse_optional_int(text: str, label: str) -> int | None:
         raise ValueError(f"{label} must be a number, got {text!r}") from exc
 
 
-def _write_task_entry(tasks_dir: Path, entry: dict[str, Any]) -> str:
-    # Safety invariant of this helper: it must never be able to write outside
-    # *tasks_dir*, whatever the caller passes in.
-    dir_name = valid_dir_name(entry["dir_name"])
-    task_dir = tasks_dir / dir_name
-    task_dir.mkdir(parents=True, exist_ok=True)
-
-    metadata: dict[str, Any] = {
-        "name": entry["name"],
-        "schedule": entry["schedule"],
-        "enabled": entry["enabled"],
-    }
-    if entry.get("description"):
-        metadata["description"] = entry["description"]
-    if entry.get("channel_id") is not None:
-        metadata["channel_id"] = entry["channel_id"]
-    if entry.get("user_id") is not None:
-        metadata["user_id"] = entry["user_id"]
-
-    body = "\n" + entry["prompt"].lstrip("\n")
-    content = render_frontmatter(metadata, body)
-    (task_dir / "TASK.md").write_text(content, encoding="utf-8")
-    return dir_name
-
-
-def _remove_deleted_tasks(tasks_dir: Path, deleted_dirs: set[str]) -> None:
-    """Remove only the directories the user explicitly deleted.
-
-    Sweeping "every directory not in memory" destroys tasks whose discovery
-    failed, so the deletion set is tracked explicitly instead.
-    """
-    for dir_name in deleted_dirs:
-        target = tasks_dir / dir_name
-        if target.is_dir() and not target.is_symlink():
-            shutil.rmtree(target)
-
-
 class TasksTab(QWidget):
     """View to list, create, edit, and delete scheduled tasks with cron expressions."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.agent_dir: Path | None = None
         self._tasks_data: list[dict[str, Any]] = []
         self._selected_index: int = -1
         self._deleted_dirs: set[str] = set()
@@ -103,18 +63,12 @@ class TasksTab(QWidget):
         self.main_layout.setContentsMargins(16, 16, 16, 16)
         self.main_layout.setSpacing(12)
 
-        # Title / Description
-        self.title_label = QLabel("Scheduled Tasks (Cron)")
-        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
-        self.main_layout.addWidget(self.title_label)
-
-        self.desc_label = QLabel(
+        create_tab_header(
+            self.main_layout,
+            "Scheduled Tasks (Cron)",
             "Scheduled tasks allow the agent to execute periodic workflows automatically. "
-            "Each task is defined within the 'workspace/tasks/' directory using a TASK.md file with YAML frontmatter."
+            "Each task is defined within the 'workspace/tasks/' directory using a TASK.md file with YAML frontmatter.",
         )
-        self.desc_label.setWordWrap(True)
-        self.desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA; line-height: 1.4;")
-        self.main_layout.addWidget(self.desc_label)
 
         # Split layout
         self.split_layout = QHBoxLayout()
@@ -124,18 +78,11 @@ class TasksTab(QWidget):
         self.left_col = QVBoxLayout()
         self.left_col.setSpacing(8)
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels([
-            "Name", "Cron / Frequency", "Recipient", "Status", "Next Run Time",
-        ])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table = create_readonly_table(
+            ["Name", "Cron / Frequency", "Recipient", "Status", "Next Run Time"],
+            stretch_column=2,
+        )
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
-        self.table.setAlternatingRowColors(True)
-        self.table.setStyleSheet(TABLE_STYLE)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.left_col.addWidget(self.table, 1)
 
@@ -189,9 +136,7 @@ class TasksTab(QWidget):
         self.form_layout.addRow("", self.chk_enabled)
         self.form_layout.addRow("Prompt:", self.input_prompt)
 
-        self.btn_update = QPushButton("💾 Update Task Data")
-        self.btn_update.setStyleSheet(ACTION_BTN_UPDATE)
-        self.btn_update.clicked.connect(self._on_update_clicked)
+        self.btn_update = create_action_button("💾 Update Task Data", ACTION_BTN_UPDATE, self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
 
         self.right_col.addWidget(self.group_editor)
@@ -201,14 +146,8 @@ class TasksTab(QWidget):
 
     def load_data(self, agent_dir: Path) -> None:
         """Scan tasks directory and populate in-memory data structures."""
-        self.agent_dir = agent_dir
-        self._tasks_data.clear()
-        self._selected_index = -1
-        self._deleted_dirs = set()
-
-        tasks_dir = agent_dir / "workspace" / "tasks"
-        for task in discover_tasks(tasks_dir):
-            self._tasks_data.append({
+        self._tasks_data = [
+            {
                 "name": task.name,
                 "description": task.description,
                 "schedule": task.schedule,
@@ -217,30 +156,20 @@ class TasksTab(QWidget):
                 "enabled": task.enabled,
                 "prompt": task.prompt,
                 "dir_name": task.path.parent.name,
-            })
-
+            }
+            for task in discover_tasks(agent_dir / "workspace" / "tasks")
+        ]
+        self._selected_index = -1
+        self._deleted_dirs = set()
         self._refresh_table()
 
     def save_data(self, agent_dir: Path) -> list[str]:
-        """Write all in-memory task data back to disk as TASK.md files.
-
-        Returns the directory names that could not be written, so the caller can
-        warn instead of silently losing the entry.
-        """
-        tasks_dir = agent_dir / "workspace" / "tasks"
-        tasks_dir.mkdir(parents=True, exist_ok=True)
-        skipped: list[str] = []
-        live_dirs: set[str] = set()
-        for entry in self._tasks_data:
-            dir_name = entry["dir_name"]
-            if not is_safe_dir_name(dir_name):
-                # Pre-existing on-disk name we cannot safely write to; leave the
-                # original file untouched rather than aborting the whole save.
-                skipped.append(str(dir_name))
-                continue
-            live_dirs.add(str(dir_name))
-            _write_task_entry(tasks_dir, entry)
-        _remove_deleted_tasks(tasks_dir, self._deleted_dirs - live_dirs)
+        """Write all in-memory task data back to disk as TASK.md files."""
+        skipped = save_tasks(
+            agent_dir / "workspace" / "tasks",
+            self._tasks_data,
+            self._deleted_dirs,
+        )
         self._deleted_dirs = set()
         return skipped
 
@@ -250,55 +179,27 @@ class TasksTab(QWidget):
         now = datetime.now(UTC)
 
         for idx, entry in enumerate(self._tasks_data):
-            # 1. Name
-            name_item = QTableWidgetItem(entry["name"])
-            name_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            name_item.setForeground(QColor("#FFFFFF"))
-            font_bold = name_item.font()
-            font_bold.setBold(True)
-            name_item.setFont(font_bold)
-            self.table.setItem(idx, 0, name_item)
+            self.table.setItem(idx, 0, make_table_item(entry["name"], color="#FFFFFF", bold=True))
+            self.table.setItem(idx, 1, make_table_item(entry["schedule"], color="#3498DB", mono=True))
 
-            # 2. Schedule
-            schedule_item = QTableWidgetItem(entry["schedule"])
-            schedule_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            schedule_item.setForeground(QColor("#3498DB"))
-            font_mono = schedule_item.font()
-            font_mono.setFamily("monospace")
-            schedule_item.setFont(font_mono)
-            self.table.setItem(idx, 1, schedule_item)
-
-            # 3. Destination
-            if entry.get("channel_id") is not None:
+            if entry["channel_id"] is not None:
                 dest_str = f"Discord Channel: {entry['channel_id']}"
-            elif entry.get("user_id") is not None:
+            elif entry["user_id"] is not None:
                 dest_str = f"User DM: {entry['user_id']}"
             else:
                 dest_str = "Console"
-            dest_item = QTableWidgetItem(dest_str)
-            dest_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            self.table.setItem(idx, 2, dest_item)
+            self.table.setItem(idx, 2, make_table_item(dest_str))
 
-            # 4. Enabled/Disabled
             enabled = entry["enabled"]
             enabled_str = "Active ✓" if enabled else "Inactive ✗"
-            enabled_item = QTableWidgetItem(enabled_str)
-            enabled_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            font_ebold = enabled_item.font()
-            font_ebold.setBold(True)
-            enabled_item.setFont(font_ebold)
-            enabled_item.setForeground(QColor("#2ECC71") if enabled else QColor("#E74C3C"))
-            self.table.setItem(idx, 3, enabled_item)
+            enabled_color = "#2ECC71" if enabled else "#E74C3C"
+            self.table.setItem(idx, 3, make_table_item(enabled_str, color=enabled_color, bold=True))
 
-            # 5. Next Run Time
             next_run_text = "—"
             if enabled:
                 upcoming = next_run(entry["schedule"], now)
                 next_run_text = upcoming.strftime("%Y-%m-%d %H:%M UTC") if upcoming else "Invalid Cron"
-            next_run_item = QTableWidgetItem(next_run_text)
-            next_run_item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-            next_run_item.setForeground(QColor("#F1C40F"))
-            self.table.setItem(idx, 4, next_run_item)
+            self.table.setItem(idx, 4, make_table_item(next_run_text, color="#F1C40F"))
 
         self._clear_form()
 
@@ -328,11 +229,11 @@ class TasksTab(QWidget):
         entry = self._tasks_data[row]
         self.input_name.setText(entry["name"])
         self.input_schedule.setText(entry["schedule"])
-        self.input_channel_id.setText(str(entry["channel_id"]) if entry.get("channel_id") is not None else "")
-        self.input_user_id.setText(str(entry["user_id"]) if entry.get("user_id") is not None else "")
-        self.input_description.setText(entry.get("description", ""))
-        self.chk_enabled.setChecked(entry.get("enabled", True))
-        self.input_prompt.setPlainText(entry.get("prompt", ""))
+        self.input_channel_id.setText(str(entry["channel_id"]) if entry["channel_id"] is not None else "")
+        self.input_user_id.setText(str(entry["user_id"]) if entry["user_id"] is not None else "")
+        self.input_description.setText(entry["description"])
+        self.chk_enabled.setChecked(entry["enabled"])
+        self.input_prompt.setPlainText(entry["prompt"])
 
     def _on_add_clicked(self) -> None:
         """Add a new empty task entry."""
@@ -345,9 +246,7 @@ class TasksTab(QWidget):
         name = name.strip()
         dir_name = name.lower().replace(" ", "-")
         try:
-            # The name becomes a path segment, so it must not escape the
-            # tasks directory.
-            valid_dir_name(dir_name)
+            validate_safe_name(dir_name, "directory name")
         except ValueError as exc:
             QMessageBox.critical(self, "Invalid Name", f"Cannot create task:\n\n{exc}")
             return
@@ -407,11 +306,10 @@ class TasksTab(QWidget):
             QMessageBox.critical(self, "Data Error", "Schedule (cron expression) is required.")
             return
 
-        # Validate cron expression
-        try:
-            croniter(schedule)
-        except (ValueError, KeyError) as exc:
-            QMessageBox.critical(self, "Invalid Cron", f"The cron expression is not valid:\n\n{exc}")
+        if not is_valid_schedule(schedule):
+            QMessageBox.critical(
+                self, "Invalid Cron", f"The cron expression is not valid: {schedule!r}"
+            )
             return
 
         # Parse optional integer fields; a typo must not silently retarget the task

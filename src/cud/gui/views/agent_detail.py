@@ -7,7 +7,7 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import Qt, QThreadPool, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
 )
 
 from cud.config.paths import agent_home
-from cud.config.settings import Settings, load_settings, save_settings
+from cud.config.settings import load_settings, save_settings
+from cud.gui.core.styles import create_separator
 from cud.gui.core.system_workers import SystemdWorker
 from cud.gui.widgets.markdown_file_tab import MarkdownFileTab
 from cud.gui.widgets.mcp_tab import MCPTab
@@ -34,7 +35,7 @@ _log = logging.getLogger(__name__)
 
 
 def _load_tab_safe(label: str, loader: Callable[..., Any], *args: Any) -> bool:
-    """Invoke *loader* catching exceptions so one broken tab cannot abort the rest.
+    """Invoke *loader* catching I/O and parse errors so one broken tab cannot abort the rest.
 
     Returns False on failure.  The caller must not save after a failed load:
     the tab still holds defaults or placeholder text and writing it back would
@@ -42,7 +43,7 @@ def _load_tab_safe(label: str, loader: Callable[..., Any], *args: Any) -> bool:
     """
     try:
         loader(*args)
-    except Exception as exc:
+    except (OSError, ValueError) as exc:
         _log.warning("Failed to load tab '%s': %s", label, exc)
         return False
     return True
@@ -140,10 +141,7 @@ class AgentDetailView(QWidget):
         self.main_layout.addLayout(svc_bar)
 
         # Thin separator
-        sep_top = QWidget()
-        sep_top.setFixedHeight(1)
-        sep_top.setStyleSheet("background-color: #2B2B2B;")
-        self.main_layout.addWidget(sep_top)
+        self.main_layout.addWidget(create_separator())
 
         # ── 3. Body: Navigation list + Content stack ────────────────────
         self.body_layout = QHBoxLayout()
@@ -220,10 +218,7 @@ class AgentDetailView(QWidget):
         self.main_layout.addLayout(self.body_layout, 1)
 
         # ── 4. Footer action bar ───────────────────────────────────────
-        sep_bottom = QWidget()
-        sep_bottom.setFixedHeight(1)
-        sep_bottom.setStyleSheet("background-color: #2B2B2B;")
-        self.main_layout.addWidget(sep_bottom)
+        self.main_layout.addWidget(create_separator())
 
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 10, 0, 2)
@@ -265,11 +260,29 @@ class AgentDetailView(QWidget):
         # Transaction loading dialogue
         self.loading_dialog: QProgressDialog | None = None
 
+    def _show_loading(self, label_text: str) -> None:
+        self.setEnabled(False)
+        dialog = QProgressDialog(label_text, "", 0, 0, self)
+        dialog.setWindowTitle("Working...")
+        dialog.setCancelButton(None)
+        dialog.setWindowFlags(
+            Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint
+        )
+        dialog.setWindowModality(Qt.WindowModality.WindowModal)
+        dialog.setMinimumDuration(0)
+        dialog.setValue(0)
+        dialog.show()
+        self.loading_dialog = dialog
+
     def _dismiss_loading(self) -> None:
         """Close and clear the loading dialog if open."""
         if self.loading_dialog:
             self.loading_dialog.close()
             self.loading_dialog = None
+
+    def _finish_worker(self, worker: SystemdWorker) -> None:
+        self._active_workers.discard(worker)
+        worker.signals.deleteLater()
 
     def set_agent(self, agent_name: str) -> None:
         """Load agent configs into their respective tabs."""
@@ -280,20 +293,14 @@ class AgentDetailView(QWidget):
         failed: list[str] = []
 
         # Load settings once and share the snapshot across tabs that need it.
-        settings: Settings | None = None
         try:
             settings = load_settings(agent_dir)
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             _log.warning("Failed to load settings for '%s': %s", agent_name, exc)
             failed.append("General")
-
-        # Load configurations — each tab is isolated so one failure does not
-        # prevent the remaining tabs from loading.
-        if settings is not None:
-            if not _load_tab_safe("Settings", self.tab_settings.load_from_settings, settings):
-                failed.append("General")
-            if not _load_tab_safe("Subagents", self.tab_subagents.load_from_subagents, settings.subagents):
-                failed.append("Subagents")
+        else:
+            self.tab_settings.load_from_settings(settings)
+            self.tab_subagents.load_from_subagents(settings.subagents)
 
         # A tab that did not load still shows its placeholder/default content,
         # so it must block the save or it would overwrite the real file.
@@ -301,10 +308,8 @@ class AgentDetailView(QWidget):
             failed.append("Instructions")
         if not _load_tab_safe("Memory", self.tab_memory.load_file, agent_dir / "MEMORY.md"):
             failed.append("Memory")
-        if not _load_tab_safe("Skills", self.tab_skills.load_data, agent_dir):
-            failed.append("Skills")
-        if not _load_tab_safe("Tasks", self.tab_tasks.load_data, agent_dir):
-            failed.append("Tasks")
+        self.tab_skills.load_data(agent_dir)
+        self.tab_tasks.load_data(agent_dir)
         if not _load_tab_safe("MCP", self.tab_mcp.load_data, agent_dir):
             failed.append("MCP")
 
@@ -331,44 +336,33 @@ class AgentDetailView(QWidget):
         self._run_async_control("restart", "Restarting gateway service...")
 
     def on_tui_clicked(self) -> None:
-        try:
-            # Attempt launching terminal emulator
-            subprocess.Popen(
-                ["x-terminal-emulator", "-e", "cud", "tui", self.agent_name],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        except Exception:
+        commands = (
+            ["x-terminal-emulator", "-e", "cud", "tui", self.agent_name],
+            ["gnome-terminal", "--", "cud", "tui", self.agent_name],
+        )
+        last_error: OSError | None = None
+        for cmd in commands:
             try:
-                # Fallback to gnome-terminal
-                subprocess.Popen(
-                    ["gnome-terminal", "--", "cud", "tui", self.agent_name],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-            except Exception as e:
-                QMessageBox.warning(
-                    self,
-                    "Terminal not Available",
-                    f"Could not automatically launch an interactive terminal emulator.\n"
-                    f"Run in your console:\n\n   cud tui {self.agent_name}\n\nDetails: {e}"
-                )
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return
+            except OSError as exc:
+                last_error = exc
+        QMessageBox.warning(
+            self,
+            "Terminal not Available",
+            f"Could not automatically launch an interactive terminal emulator.\n"
+            f"Run in your console:\n\n   cud tui {self.agent_name}\n\nDetails: {last_error}",
+        )
 
     def _run_async_control(self, action: str, label_text: str) -> None:
         """Spawn background control workers in QThreadPool."""
-        self.setEnabled(False)
-        self.loading_dialog = QProgressDialog(label_text, "", 0, 0, self)
-        self.loading_dialog.setWindowTitle("Service Control")
-        self.loading_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self.loading_dialog.setMinimumDuration(0)
-        self.loading_dialog.setValue(0)
-        self.loading_dialog.show()
+        self._show_loading(label_text)
 
         worker = SystemdWorker(action, self.agent_name)
         worker.signals.finished.connect(self._on_control_finished)
         worker.signals.error.connect(self._on_control_error)
-        worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
-        worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+        worker.signals.finished.connect(lambda *_a, w=worker: self._finish_worker(w))
+        worker.signals.error.connect(lambda *_a, w=worker: self._finish_worker(w))
         self._active_workers.add(worker)
         QThreadPool.globalInstance().start(worker)
 
@@ -395,13 +389,7 @@ class AgentDetailView(QWidget):
             )
             return
 
-        self.setEnabled(False)
-        self.loading_dialog = QProgressDialog("Saving files and restarting agent...", "", 0, 0, self)
-        self.loading_dialog.setWindowTitle("Save Changes")
-        self.loading_dialog.setWindowModality(Qt.WindowModality.WindowModal)
-        self.loading_dialog.setMinimumDuration(0)
-        self.loading_dialog.setValue(0)
-        self.loading_dialog.show()
+        self._show_loading("Saving files and restarting agent...")
 
         try:
             agent_dir = agent_home(self.agent_name)
@@ -430,8 +418,8 @@ class AgentDetailView(QWidget):
             worker = SystemdWorker("restart", self.agent_name)
             worker.signals.finished.connect(self._on_save_restart_finished)
             worker.signals.error.connect(self._on_save_restart_error)
-            worker.signals.finished.connect(lambda *_a, w=worker: self._active_workers.discard(w))
-            worker.signals.error.connect(lambda *_a, w=worker: self._active_workers.discard(w))
+            worker.signals.finished.connect(lambda *_a, w=worker: self._finish_worker(w))
+            worker.signals.error.connect(lambda *_a, w=worker: self._finish_worker(w))
             self._active_workers.add(worker)
             QThreadPool.globalInstance().start(worker)
 
@@ -445,7 +433,7 @@ class AgentDetailView(QWidget):
                     + "\n\nEverything else was saved. Rename them in the agent directory.",
                 )
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             _log.exception("Save failed for agent '%s'", self.agent_name)
             self._dismiss_loading()
             self.setEnabled(True)
@@ -457,10 +445,6 @@ class AgentDetailView(QWidget):
             )
 
     def _on_save_restart_finished(self, action: str, service_name: str, message: str) -> None:
-        # Give systemd service 1.5 seconds to bootstrap properly before polling status
-        QTimer.singleShot(1500, self._complete_save_workflow)
-
-    def _complete_save_workflow(self) -> None:
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(

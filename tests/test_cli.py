@@ -1,5 +1,4 @@
 import argparse
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,14 +30,17 @@ def test_build_parser() -> None:
 
 def test_cmd_completion(capsys: pytest.CaptureFixture[str]) -> None:
     """The script must list every registered subcommand, derived from the parser."""
-    assert cmd_completion(argparse.Namespace(shell="bash")) == 0
+    parser = build_parser()
+    bash_args = parser.parse_args(["completion", "bash"])
+    assert cmd_completion(bash_args) == 0
     bash = capsys.readouterr().out
-    assert cmd_completion(argparse.Namespace(shell="zsh")) == 0
+    zsh_args = parser.parse_args(["completion", "zsh"])
+    assert cmd_completion(zsh_args) == 0
     zsh = capsys.readouterr().out
 
     for shell_out in (bash, zsh):
         assert bash != zsh, "bash and zsh must not emit the same script"
-        for command in build_parser()._subparsers._group_actions[0].choices:
+        for command in bash_args.subcommands:
             assert command in shell_out, command
 
 
@@ -56,6 +58,16 @@ def test_main_keyboard_interrupt() -> None:
         assert main(["completion", "bash"]) == 130
 
 
+def test_main_user_error() -> None:
+    with patch("cud.cli.build_parser") as mock_bp:
+        mock_parser = MagicMock()
+        mock_args = MagicMock()
+        mock_args.func.side_effect = ValueError("bad input")
+        mock_parser.parse_args.return_value = mock_args
+        mock_bp.return_value = mock_parser
+        assert main(["completion", "bash"]) == 1
+
+
 def test_main_exception() -> None:
     with patch("cud.cli.build_parser") as mock_bp:
         mock_parser = MagicMock()
@@ -66,8 +78,7 @@ def test_main_exception() -> None:
         assert main(["completion", "bash"]) == 1
 
 
-def test_agent_cli_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+def test_agent_cli_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cud.agent.cli.systemd.systemd_available", lambda: False)
 
     # Empty list
@@ -85,7 +96,7 @@ def test_agent_cli_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     assert cmd_agent_list(list_args_verbose) == 0
 
     # Create a corrupted agent without settings.yaml for verbose listing test
-    corrupt_agent = tmp_path / "agents" / "corrupted-agent"
+    corrupt_agent = agent_home("corrupted-agent")
     corrupt_agent.mkdir(parents=True)
     assert cmd_agent_list(list_args_verbose) == 0
 
@@ -120,8 +131,7 @@ def test_agent_cli_lifecycle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
     assert cmd_agent_delete(delete_yes) == 0
 
 
-def test_gateway_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+def test_gateway_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     create_args = argparse.Namespace(name="gw-agent", template="default")
     cmd_agent_create(create_args)
 
@@ -163,8 +173,7 @@ def test_tui_cli() -> None:
         assert cmd_tui(args) == 0
 
 
-def test_agent_cli_memory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+def test_agent_cli_memory() -> None:
     # Nonexistent agent
     assert cmd_agent_memory(argparse.Namespace(name="nonexistent", clear=False, search=None, view=True)) == 1
 

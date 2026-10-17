@@ -6,7 +6,6 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from pathlib import Path
 from uuid import uuid4
 
 from prompt_toolkit import PromptSession
@@ -17,11 +16,10 @@ from rich import box
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 from rich.theme import Theme
 
-from cud.agent.episodic_memory import load_past_user_prompts
+from cud.agent.episodic_memory import HistoryError, build_memory_search_table
 from cud.agent.runtime import AgentRuntime
 from cud.config.paths import agent_home
 from cud.config.settings import load_settings
@@ -41,11 +39,6 @@ _STYLE_WARNING = "cud.warning"
 _STYLE_ERROR = "cud.error"
 _COLOR_DIM_CYAN = "dim cyan"
 _COLOR_BOLD_CYAN = "bold cyan"
-
-_CMD_HELP = "/help"
-_CMD_QUIT = "/quit"
-_CMD_UNDO = "/undo"
-_CMD_RELOAD = "/reload"
 
 _THEME = Theme({
     "cud.accent": _COLOR_BOLD_CYAN,
@@ -75,9 +68,9 @@ def _welcome_banner(agent_name: str, model_name: str, thread_id: str, console: C
     info_lines.append("\n  thread  ", style="dim")
     info_lines.append(thread_id, style="bright_white")
     info_lines.append("\n  ", style="dim")
-    info_lines.append(_CMD_HELP, style="cyan")
+    info_lines.append("/help", style="cyan")
     info_lines.append(" commands  ", style="dim")
-    info_lines.append(_CMD_QUIT, style="cyan")
+    info_lines.append("/quit", style="cyan")
     info_lines.append(" exit", style="dim")
 
     panel = Panel(
@@ -140,23 +133,19 @@ def _help_panel(console: Console) -> None:
 # Prompt builder
 # ---------------------------------------------------------------------------
 
-
-def _build_prompt_message() -> HTML:
-    """Build the prompt_toolkit formatted prompt with a chevron."""
-    return HTML('<style fg="#6e6e6e">❯</style> ')
-
+_PROMPT_MESSAGE = HTML('<style fg="#6e6e6e">❯</style> ')
 
 # Single source of truth for the completer and /help, so they cannot drift.
 _COMMANDS_META = {
     "/new": "Start a new session",
     "/model ": "Switch model",
-    _CMD_UNDO: "Remove last exchange",
-    _CMD_RELOAD: "Reload tools & prompt",
+    "/undo": "Remove last exchange",
+    "/reload": "Reload tools & prompt",
     "/memory view": "View agent memory",
     "/memory clear": "Clear agent memory",
     "/memory search ": "Search past sessions",
-    _CMD_HELP: "Show commands",
-    _CMD_QUIT: "Exit",
+    "/help": "Show commands",
+    "/quit": "Exit",
     "/exit": "Exit",
 }
 
@@ -173,23 +162,16 @@ _completer = WordCompleter(
 # ---------------------------------------------------------------------------
 
 
-def _handle_memory_search(query: str, runtime: AgentRuntime, console: Console) -> None:
+async def _handle_memory_search(query: str, runtime: AgentRuntime, console: Console) -> None:
     if not query:
         _system_message("Usage: /memory search <query>", _STYLE_WARNING, console)
         return
-    results = runtime.search_past_conversations(query, limit=5)
+    # The search scans the whole history DB: keep it off the event loop.
+    results = await asyncio.to_thread(runtime.search_past_conversations, query, 5)
     if not results:
         _system_message(f"No past conversations found matching '{query}'.", _STYLE_WARNING, console)
         return
-    table = Table(title=f"Past Conversations: '{query}'", box=box.ROUNDED)
-    table.add_column("Session ID", style=_COLOR_BOLD_CYAN)
-    table.add_column("Date", style="dim")
-    table.add_column("Score", justify="right")
-    table.add_column("Snippet Preview")
-    for item in results:
-        snippets_text = "\n".join(item["snippets"][:2])
-        table.add_row(item["thread_id"][:8], item["formatted_date"], str(item["score"]), snippets_text)
-    console.print(table)
+    console.print(build_memory_search_table(query, results))
     console.print()
 
 
@@ -211,30 +193,29 @@ async def _handle_memory_command(args: str, runtime: AgentRuntime, console: Cons
         _system_message(result, _STYLE_SUCCESS, console)
     elif args == "search" or args.startswith("search "):
         _, _, query = args.partition(" ")
-        # The search scans the whole history DB: keep it off the event loop.
-        await asyncio.to_thread(_handle_memory_search, query.strip(), runtime, console)
+        await _handle_memory_search(query.strip(), runtime, console)
     else:
         _system_message("Usage: /memory view | /memory clear | /memory search <query>", _STYLE_WARNING, console)
 
 
 async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> bool:
     """Handle slash commands. Returns True if the command is /quit or /exit."""
-    parts = cmd.split(maxsplit=1)
-    if not parts:
+    raw_cmd, _, args = cmd.strip().partition(" ")
+    if not raw_cmd:
         return False
-    command = parts[0].lower()
-    args = parts[1] if len(parts) > 1 else ""
+    command = raw_cmd.lower()
+    args = args.strip()
 
-    if command in (_CMD_QUIT, "/exit"):
+    if command in ("/quit", "/exit"):
         _system_message("Goodbye!", _STYLE_DIM, console)
         return True
     elif command == "/new":
         result = runtime.new_session()
         _system_message(result, _STYLE_SUCCESS, console)
-    elif command == _CMD_UNDO:
+    elif command == "/undo":
         result = await runtime.undo_last_exchange()
         _system_message(result, _STYLE_SUCCESS, console)
-    elif command == _CMD_RELOAD:
+    elif command == "/reload":
         await runtime.reload()
         _system_message("Agent tools and prompt reloaded.", _STYLE_SUCCESS, console)
     elif command in ("/memory", "/history"):
@@ -245,7 +226,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
             return False
         result = await runtime.set_model(args)
         _system_message(result, _STYLE_SUCCESS, console)
-    elif command == _CMD_HELP:
+    elif command == "/help":
         _help_panel(console)
     else:
         _system_message(f"Unknown command: {command}", _STYLE_ERROR, console)
@@ -266,29 +247,26 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
         _system_message(f"Agent '{agent_name}' not found.", _STYLE_ERROR, console)
         return 1
 
-    prompt_message = _build_prompt_message()
-    prompt_history = InMemoryHistory()
-    db_path = agent_dir / "history.db"
-    # Reading history deserializes every row of the writes table: keep it off
-    # the event loop and never let a corrupt database kill the TUI at startup.
-    try:
-        past_prompts = await asyncio.to_thread(load_past_user_prompts, db_path)
-    except Exception as exc:
-        _log.warning("Could not load prompt history", exc_info=exc)
-        past_prompts = []
-    for prompt_text in past_prompts[-_MAX_HISTORY_PROMPTS:]:
-        prompt_history.append_string(prompt_text)
-    session: PromptSession[str] = PromptSession(completer=_completer, history=prompt_history)
-
     thread_id = thread_id or uuid4().hex
-    # Only used for the banner; the runtime re-reads settings on first invoke.
-    model_name = _banner_model_name(agent_dir)
+    model_name = load_settings(agent_dir).model.name
     _welcome_banner(agent_name, model_name, thread_id, console)
 
     async with AgentRuntime(agent_dir, thread_id=thread_id) as runtime:
+        prompt_history = InMemoryHistory()
+        # Reading history deserializes every row of the writes table: keep it off
+        # the event loop and never let a corrupt database kill the TUI at startup.
+        try:
+            past_prompts = await asyncio.to_thread(runtime.load_past_prompts)
+        except HistoryError as exc:
+            _log.warning("Could not load prompt history", exc_info=exc)
+            past_prompts = []
+        for prompt_text in past_prompts[-_MAX_HISTORY_PROMPTS:]:
+            prompt_history.append_string(prompt_text)
+        session: PromptSession[str] = PromptSession(completer=_completer, history=prompt_history)
+
         while True:
             try:
-                user_input = await session.prompt_async(prompt_message)
+                user_input = await session.prompt_async(_PROMPT_MESSAGE)
                 user_input = user_input.strip()
 
                 if not user_input:
@@ -322,11 +300,3 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
                 _system_message(f"Error: {exc}", _STYLE_ERROR, console)
 
     return 0
-
-
-def _banner_model_name(agent_dir: Path) -> str:
-    try:
-        return load_settings(agent_dir).model.name
-    except Exception as exc:
-        _log.warning("Could not read settings for the welcome banner", exc_info=exc)
-        return "unknown"
