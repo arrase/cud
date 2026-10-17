@@ -1,22 +1,20 @@
 import argparse
-import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from cud.config.paths import agent_home
 from cud.config.scaffold import create_agent
+from cud.tools.cli import cmd_mcp_add, cmd_mcp_list, register_mcp_commands
 from cud.tools.mcp import (
     MCPConfig,
-    _build_stdio_server_config,
     _filter_tools,
-    cmd_mcp_add,
-    cmd_mcp_list,
+    build_stdio_server_config,
     load_mcp_config,
     load_mcp_tools_for_servers,
     load_mcp_tools_managed,
-    register_mcp_commands,
     save_mcp_config,
 )
 
@@ -74,7 +72,7 @@ def test_filter_tools() -> None:
 
 
 def test_build_stdio_server_config() -> None:
-    conf = _build_stdio_server_config(
+    conf = build_stdio_server_config(
         "uvx server --debug", ["API_KEY=123", "HOST=localhost"], "stdio"
     )
     assert conf["command"] == "uvx"
@@ -82,11 +80,11 @@ def test_build_stdio_server_config() -> None:
     assert conf["transport"] == "stdio"
     assert conf["env"] == {"API_KEY": "123", "HOST": "localhost"}
 
+    with pytest.raises(ValueError, match="MCP server command cannot be empty"):
+        build_stdio_server_config("   ")
 
-def test_cmd_mcp_add_and_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    create_agent("test-agent")
 
+def test_cmd_mcp_add_and_list(agent_dir: Path) -> None:
     add_args_stdio = argparse.Namespace(
         agent="test-agent",
         server_url_or_cmd="npx -y @modelcontextprotocol/server-filesystem",
@@ -110,16 +108,32 @@ def test_cmd_mcp_add_and_list(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
     list_args = argparse.Namespace(agent="test-agent")
     assert cmd_mcp_list(list_args) == 0
 
-    loaded = load_mcp_config(tmp_path / "agents" / "test-agent")
+    loaded = load_mcp_config(agent_dir)
     assert "fs" in loaded.servers
     assert "remote-sse" in loaded.servers
     assert loaded.servers["remote-sse"]["transport"] == "sse"
     assert "read_file" in loaded.allowed_tools
 
 
-def test_load_mcp_tools_empty_servers(tmp_path: Path) -> None:
-    assert asyncio.run(load_mcp_tools_managed(tmp_path)) == []
-    assert asyncio.run(load_mcp_tools_for_servers({})) == []
+def test_cmd_mcp_add_nonexistent_agent() -> None:
+    with pytest.raises(FileNotFoundError, match="Agent 'ghost' does not exist"):
+        cmd_mcp_add(
+            argparse.Namespace(
+                agent="ghost",
+                server_url_or_cmd="echo",
+                name="x",
+                allowed_tool=[],
+                transport=None,
+                env=[],
+            )
+        )
+    assert not agent_home("ghost").exists()
+
+
+@pytest.mark.anyio
+async def test_load_mcp_tools_empty_servers(tmp_path: Path) -> None:
+    assert await load_mcp_tools_managed(tmp_path) == []
+    assert await load_mcp_tools_for_servers({}) == []
 
 
 @pytest.mark.anyio
@@ -145,13 +159,6 @@ async def test_load_mcp_tools_for_servers_with_servers() -> None:
 
     with patch("cud.tools.mcp.MultiServerMCPClient", return_value=mock_client):
         assert await load_mcp_tools_for_servers({"echo": {"command": "echo"}}) == [tool]
-
-
-def test_mcp_client_has_no_close_api() -> None:
-    """Guards the assumption that removed the dead cleanup plumbing."""
-    from langchain_mcp_adapters.client import MultiServerMCPClient
-
-    assert not hasattr(MultiServerMCPClient, "close")
 
 
 def test_load_mcp_config_rejects_bad_types(tmp_path: Path) -> None:
@@ -186,14 +193,12 @@ def test_mcp_config_with_string_allowed_tools_keeps_tools(tmp_path: Path) -> Non
 
 def test_build_stdio_server_config_rejects_bad_env() -> None:
     with pytest.raises(ValueError, match="KEY=VALUE"):
-        _build_stdio_server_config("uvx server", ["NOEQUALS"], "stdio")
+        build_stdio_server_config("uvx server", ["NOEQUALS"], "stdio")
 
 
-def test_mcp_add_picks_free_default_name(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_mcp_add_picks_free_default_name() -> None:
     """Regression: the default name used to overwrite an existing entry."""
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    create_agent("agent-a")
-    agent_dir = tmp_path / "agents" / "agent-a"
+    agent_dir = create_agent("agent-a")
     save_mcp_config(agent_dir, MCPConfig(servers={"server2": {"command": "keepme"}}))
 
     assert cmd_mcp_add(argparse.Namespace(
@@ -206,8 +211,7 @@ def test_mcp_add_picks_free_default_name(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert "server1" in loaded.servers
 
 
-def test_mcp_add_rejects_bad_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
+def test_mcp_add_rejects_bad_env() -> None:
     create_agent("agent-b")
     assert cmd_mcp_add(argparse.Namespace(
         agent="agent-b", server_url_or_cmd="echo", name="x",

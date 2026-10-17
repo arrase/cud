@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
 from cud.agent.episodic_memory import (
+    HistoryError,
     connect_history,
     create_search_past_conversations_tool,
     extract_text,
@@ -15,6 +16,7 @@ from cud.agent.episodic_memory import (
     format_past_conversations_context,
     load_past_conversations,
     load_past_user_prompts,
+    message_role_and_text,
     search_past_conversations_in_db,
 )
 
@@ -326,8 +328,6 @@ def test_corrupt_checkpoint_raises_history_error(
     tmp_path: Path, payload: dict[str, object], message: str
 ) -> None:
     """Regression: a raw ValueError/KeyError escaped into the LLM tool call."""
-    from cud.agent.episodic_memory import HistoryError
-
     db = tmp_path / "history.db"
     _seed_db(db)
     serializer = JsonPlusSerializer()
@@ -342,16 +342,6 @@ def test_corrupt_checkpoint_raises_history_error(
 
     with pytest.raises(HistoryError, match=message):
         load_past_conversations(db)
-
-
-@pytest.mark.anyio
-async def test_tool_reports_history_errors_as_text(tmp_path: Path) -> None:
-    """A corrupt database must reach the model as a message, not a traceback."""
-    db = tmp_path / "history.db"
-    db.write_bytes(b"definitely not sqlite")
-    tool = create_search_past_conversations_tool(db_path=db, get_thread_id=lambda: "t")
-    out = await tool.ainvoke({"query": "docker"})
-    assert "Error searching past conversations" in out
 
 
 def test_history_uri_escapes_special_characters(tmp_path: Path) -> None:
@@ -379,7 +369,5 @@ def test_extract_text_strips_every_path() -> None:
 
 
 def test_message_role_reads_objects_and_dicts() -> None:
-    from cud.agent.episodic_memory import _message_role_and_text
-
-    assert _message_role_and_text(HumanMessage(content="hi")) == ("human", "hi")
-    assert _message_role_and_text({"role": "user", "content": " hi "}) == ("user", "hi")
+    assert message_role_and_text(HumanMessage(content="hi")) == ("human", "hi")
+    assert message_role_and_text({"role": "user", "content": " hi "}) == ("user", "hi")

@@ -6,7 +6,7 @@ import argparse
 
 from rich.console import Console
 
-from cud.config.paths import agent_home
+from cud.config.paths import agent_home, existing_agent_home
 from cud.config.settings import load_settings, save_settings
 from cud.gateway import systemd
 from cud.gateway.run import run_gateway
@@ -53,6 +53,7 @@ def cmd_gateway_run(args: argparse.Namespace) -> int:
 
 
 def cmd_gateway_start(args: argparse.Namespace) -> int:
+    existing_agent_home(args.agent)
     path = systemd.install_unit(args.agent)
     console.print(f"Wrote {path}")
     if not systemd.systemd_available():
@@ -71,7 +72,7 @@ def cmd_gateway_start(args: argparse.Namespace) -> int:
 def cmd_gateway_stop(args: argparse.Namespace) -> int:
     if not _require_systemd():
         return 1
-    result = systemd.systemctl_user("stop", systemd.service_name(args.agent))
+    result = systemd.stop_service(args.agent)
     console.print(result.stdout or result.stderr)
     return result.returncode
 

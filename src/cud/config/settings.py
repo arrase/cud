@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import os
+import shlex
 import tempfile
+import urllib.parse
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any, Self
 
 import yaml
+
+# Trailing marker used to round-trip env vars through plain-text editors.
+ENV_MARKER = "env:"
 
 
 @dataclass(slots=True)
@@ -88,34 +93,49 @@ def _dataclass_from_dict(cls: type[Any], raw: Any) -> Any:
     return cls(**known)
 
 
-# Numeric settings fields, keyed by owning dataclass *and* field name so a future
-# dataclass with a same-named field of another type is not coerced silently.
 _NUMERIC_FIELDS = {
     ("ModelSettings", "temperature"),
     ("ModelSettings", "context_window"),
     ("SubAgentSettings", "context_window"),
 }
 
-# Subset where a null is accepted and normalised to the "inherit" sentinel.
-_NULLABLE_NUMERIC_FIELDS = {("SubAgentSettings", "context_window")}
-
 
 def _coerce(owner: str, name: str, value: Any) -> Any:
-    """Check that *value* matches the declared type of settings field *name*.
-
-    YAML writes `0` where a float is expected, so ints are widened for float
-    fields; anything else is rejected with an actionable message.
-    """
-    if (owner, name) not in _NUMERIC_FIELDS:
+    """Check that *value* matches the declared type of settings field *name*."""
+    key = (owner, name)
+    if key == ("RuntimeSettings", "allow_traversal"):
+        if not isinstance(value, bool):
+            raise ValueError(f"allow_traversal must be a boolean, got {type(value).__name__}")
         return value
-    if value is None and (owner, name) in _NULLABLE_NUMERIC_FIELDS:
-        # `context_window: ` is a plausible way of writing "inherit the parent
-        # default", which is what 0 already means downstream.
+    if key == ("SubAgentSettings", "context_window") and value is None:
         return 0
-    # `bool` is a subclass of `int`, so reject it explicitly for numbers.
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}")
-    return float(value) if (owner, name) == ("ModelSettings", "temperature") else int(value)
+    if key in _NUMERIC_FIELDS:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(
+                f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}"
+            )
+        if key == ("ModelSettings", "temperature"):
+            return float(value)
+        if not isinstance(value, int):
+            raise ValueError(
+                f"settings field '{owner}.{name}' must be an integer, got {type(value).__name__}"
+            )
+        return value
+    if name in ("skills_paths", "args"):
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise ValueError(f"settings field '{owner}.{name}' must be a list of strings")
+        return list(value)
+    if name == "env":
+        if not isinstance(value, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+        ):
+            raise ValueError(f"settings field '{owner}.{name}' must be a string mapping")
+        return dict(value)
+    if not isinstance(value, str):
+        raise ValueError(
+            f"settings field '{owner}.{name}' must be a string, got {type(value).__name__}"
+        )
+    return value
 
 
 def _subagents_from_list(raw: Any) -> list[SubAgentSettings]:
@@ -131,10 +151,65 @@ def _subagents_from_list(raw: Any) -> list[SubAgentSettings]:
         if mcp_raw is not None and not isinstance(mcp_raw, list):
             raise ValueError(f"'mcp_servers' must be a list, got {type(mcp_raw).__name__}")
         mcp_servers = [_dataclass_from_dict(SubAgentMCPServer, m) for m in (mcp_raw or [])]
-        sa = _dataclass_from_dict(SubAgentSettings, {k: v for k, v in item.items() if k != "mcp_servers"})
+        sa = _dataclass_from_dict(
+            SubAgentSettings, {k: v for k, v in item.items() if k != "mcp_servers"}
+        )
         sa.mcp_servers = mcp_servers
         subagents.append(sa)
     return subagents
+
+
+def format_subagent_mcp_server(srv: SubAgentMCPServer) -> str:
+    """Render one MCP server as a single lossless editable line.
+
+    Env values are percent-encoded so commas, spaces and ``=`` inside a value
+    survive the round trip intact.
+    """
+    line = shlex.join([srv.name, srv.command, *srv.args])
+    if srv.env:
+        encoded = ",".join(
+            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
+            for k, v in srv.env.items()
+        )
+        line = f"{line} {ENV_MARKER}[{encoded}]"
+    return line
+
+
+def parse_subagent_mcp_servers(text: str) -> list[SubAgentMCPServer]:
+    """Parse MCP server definitions from multi-line text.
+
+    Each line is ``name command arg1 arg2 ... [env:KEY=VALUE,...]``.
+    Arguments are shlex-quoted and env values percent-encoded, so values
+    containing spaces, commas or ``=`` survive the round trip.
+    """
+    servers: list[SubAgentMCPServer] = []
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        env: dict[str, str] = {}
+        if line.endswith("]") and ENV_MARKER in line:
+            line, _, env_blob = line.rpartition(ENV_MARKER)
+            line = line.rstrip()
+            for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
+                key, sep, value = pair.partition("=")
+                if sep:
+                    env[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+        try:
+            parts = shlex.split(line)
+        except ValueError:
+            continue  # Unbalanced quotes: skip the line rather than corrupt the config.
+        if len(parts) < 2:
+            continue
+        servers.append(
+            SubAgentMCPServer(
+                name=parts[0],
+                command=parts[1],
+                args=parts[2:],
+                env=env,
+            )
+        )
+    return servers
 
 
 def load_settings(agent_dir: Path) -> Settings:
@@ -159,13 +234,12 @@ def save_settings(agent_dir: Path, settings: Settings) -> None:
     config that ``load_settings`` would later reject and brick the agent.
     """
     validate_settings(settings)
-    validate_subagents(settings)
     agent_dir.mkdir(parents=True, exist_ok=True)
     text = yaml.safe_dump(settings.to_dict(), sort_keys=False, allow_unicode=True)
-    _atomic_write(agent_dir / "settings.yaml", text, mode=0o600)  # holds the Discord token
+    _atomic_write(agent_dir / "settings.yaml", text)
 
 
-def _atomic_write(path: Path, text: str, *, mode: int | None = None) -> None:
+def _atomic_write(path: Path, text: str) -> None:
     """Write *text* to *path* via a same-directory temp file and one rename.
 
     A crash or a concurrent reader can no longer observe a truncated file.
@@ -175,8 +249,7 @@ def _atomic_write(path: Path, text: str, *, mode: int | None = None) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
-        if mode is not None:
-            tmp.chmod(mode)
+        tmp.chmod(0o600)
         tmp.replace(path)
     except BaseException:
         tmp.unlink(missing_ok=True)
@@ -184,35 +257,45 @@ def _atomic_write(path: Path, text: str, *, mode: int | None = None) -> None:
 
 
 def validate_settings(settings: Settings) -> None:
-    """Invariants that must hold for an agent to be able to start at all."""
+    """Validate all settings and subagent invariants."""
+    if not isinstance(settings.runtime.allow_traversal, bool):
+        raise ValueError("allow_traversal must be a boolean")
     if settings.model.provider != "ollama":
         raise ValueError("v1 supports only the ollama model provider")
-    if not settings.model.name:
+    if not isinstance(settings.model.name, str) or not settings.model.name:
         raise ValueError("model.name is required")
-    if settings.model.context_window <= 0:
+    if (
+        isinstance(settings.model.context_window, bool)
+        or not isinstance(settings.model.context_window, int)
+        or settings.model.context_window <= 0
+    ):
         raise ValueError("model.context_window must be positive")
-    if settings.model.temperature < 0:
+    if (
+        isinstance(settings.model.temperature, bool)
+        or not isinstance(settings.model.temperature, (int, float))
+        or settings.model.temperature < 0
+    ):
         raise ValueError("model.temperature must be non-negative")
     if settings.gateway.token and settings.gateway.provider != "discord":
         raise ValueError("v1 supports only the discord gateway provider")
-
-
-def validate_subagents(settings: Settings) -> None:
-    """Writer-side checks for subagent definitions.
-
-    Deliberately *not* part of :func:`validate_settings`: a hand-edited
-    ``settings.yaml`` with a dubious subagent should not stop the whole agent
-    from booting, and a null ``context_window`` is a plausible way of writing
-    "inherit the parent default".
-    """
     seen: set[str] = set()
     for sa in settings.subagents:
-        if not sa.name:
+        if not isinstance(sa.name, str) or not sa.name:
             raise ValueError("subagent.name is required")
         if sa.name in seen:
             raise ValueError(f"duplicate subagent name: {sa.name!r}")
         seen.add(sa.name)
-        if not isinstance(sa.context_window, int):
+        if (
+            not isinstance(sa.description, str)
+            or not isinstance(sa.system_prompt, str)
+            or not isinstance(sa.model, str)
+        ):
+            raise ValueError(f"subagent '{sa.name}': string fields must be strings")
+        if not isinstance(sa.skills_paths, list) or not all(
+            isinstance(p, str) for p in sa.skills_paths
+        ):
+            raise ValueError(f"subagent '{sa.name}': skills_paths must be a list of strings")
+        if isinstance(sa.context_window, bool) or not isinstance(sa.context_window, int):
             raise ValueError(
                 f"subagent '{sa.name}': context_window must be an integer, "
                 f"got {type(sa.context_window).__name__}"

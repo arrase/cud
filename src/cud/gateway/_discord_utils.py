@@ -25,8 +25,8 @@ def split_message(content: str, limit: int = DISCORD_MAX_LENGTH) -> list[str]:
     Prefers splitting on newlines, then spaces, falling back to hard cuts only
     when a single token exceeds the limit.
     """
-    if len(content) <= limit:
-        return [content]
+    if not content:
+        return [""]
 
     chunks: list[str] = []
     remaining = content

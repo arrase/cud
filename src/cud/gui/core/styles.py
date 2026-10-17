@@ -5,15 +5,37 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
 ICON_PATH = Path(__file__).resolve().parents[1] / "assets" / "icon.png"
 
 
 # ---------------------------------------------------------------------------
-# Monospace font factory
+# Font factories and shared widget builders
 # ---------------------------------------------------------------------------
+
+
+def ui_font(point_size: int = 10) -> QFont:
+    """Return the best available sans-serif UI font with the given *point_size*."""
+    font = QFont("Outfit")
+    if not font.exactMatch():
+        font = QFont("Inter")
+        if not font.exactMatch():
+            font = QFont("sans-serif")
+    font.setStyleHint(QFont.StyleHint.SansSerif)
+    font.setPointSize(point_size)
+    return font
 
 
 def monospace_font(size: int = 10) -> QFont:
@@ -37,6 +59,64 @@ def create_action_button(text: str, style: str, on_click: Callable[[], None]) ->
     btn.setStyleSheet(style)
     btn.clicked.connect(on_click)
     return btn
+
+
+def create_tab_header(layout: QVBoxLayout, title: str, description: str) -> None:
+    title_label = QLabel(title)
+    title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #FFFFFF;")
+    layout.addWidget(title_label)
+
+    desc_label = QLabel(description)
+    desc_label.setWordWrap(True)
+    desc_label.setStyleSheet("font-size: 12px; color: #AAAAAA; line-height: 1.4;")
+    layout.addWidget(desc_label)
+
+
+def create_separator() -> QWidget:
+    sep = QWidget()
+    sep.setFixedHeight(1)
+    sep.setStyleSheet("background-color: #2B2B2B;")
+    return sep
+
+
+def create_readonly_table(headers: list[str], stretch_column: int = -1) -> QTableWidget:
+    table = QTableWidget()
+    table.setColumnCount(len(headers))
+    table.setHorizontalHeaderLabels(headers)
+    table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+    table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+    table.verticalHeader().setVisible(False)
+    header = table.horizontalHeader()
+    for col in range(len(headers)):
+        mode = (
+            QHeaderView.ResizeMode.Stretch
+            if col == stretch_column
+            else QHeaderView.ResizeMode.ResizeToContents
+        )
+        header.setSectionResizeMode(col, mode)
+    table.setAlternatingRowColors(True)
+    table.setStyleSheet(TABLE_STYLE)
+    return table
+
+
+def make_table_item(
+    text: str,
+    *,
+    color: str = "",
+    bold: bool = False,
+    mono: bool = False,
+) -> QTableWidgetItem:
+    item = QTableWidgetItem(text)
+    item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
+    if color:
+        item.setForeground(QColor(color))
+    if mono:
+        item.setFont(monospace_font())
+    if bold:
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+    return item
 
 
 # ---------------------------------------------------------------------------

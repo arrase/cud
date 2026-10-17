@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from cud.config.scaffold import create_agent
+
 
 @pytest.fixture(scope="session")
 def anyio_backend() -> str:
@@ -31,3 +33,8 @@ def isolate_cud_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("CUD_HOME", str(home))
     yield
+
+
+@pytest.fixture
+def agent_dir() -> Path:
+    return create_agent("test-agent")

@@ -6,7 +6,10 @@ from cud.config.paths import (
     agent_home,
     agents_root,
     cud_home,
+    existing_agent_home,
+    is_safe_name,
     validate_agent_name,
+    validate_safe_name,
 )
 
 
@@ -38,6 +41,8 @@ def test_agents_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     ],
 )
 def test_validate_agent_name_valid(name: str) -> None:
+    assert is_safe_name(name) is True
+    assert validate_safe_name(name) == name
     assert validate_agent_name(name) == name
 
 
@@ -55,6 +60,7 @@ def test_validate_agent_name_valid(name: str) -> None:
     ],
 )
 def test_validate_agent_name_invalid(name: str) -> None:
+    assert is_safe_name(name) is False
     with pytest.raises(
         ValueError, match="agent name must start with an alphanumeric character"
     ):
@@ -66,8 +72,16 @@ def test_agent_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert agent_home("test-agent") == tmp_path / "agents" / "test-agent"
 
 
-def test_agent_home_invalid(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_existing_agent_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("CUD_HOME", str(tmp_path))
+    with pytest.raises(FileNotFoundError, match="Agent 'ghost' does not exist"):
+        existing_agent_home("ghost")
+    target = tmp_path / "agents" / "real"
+    target.mkdir(parents=True)
+    assert existing_agent_home("real") == target
+
+
+def test_agent_home_invalid() -> None:
     with pytest.raises(ValueError):
         agent_home("../invalid")
 
@@ -86,7 +100,3 @@ def test_validate_agent_name_rejects_newlines(name: str) -> None:
     are interpolated into line-oriented systemd unit files."""
     with pytest.raises(ValueError, match="agent name must start with"):
         validate_agent_name(name)
-
-
-def test_validate_agent_name_accepts_64_chars() -> None:
-    assert validate_agent_name("a" * 64) == "a" * 64

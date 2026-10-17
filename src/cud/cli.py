@@ -11,9 +11,11 @@ from rich.console import Console
 from cud.agent.cli import register_agent_commands
 from cud.engine.cli import register_engine_commands
 from cud.gateway.cli import register_gateway_commands
-from cud.tools.mcp import register_mcp_commands
-from cud.tools.skills import register_tools_commands
-from cud.tools.tasks import register_task_commands
+from cud.tools.cli import (
+    register_mcp_commands,
+    register_tasks_commands,
+    register_tools_commands,
+)
 from cud.tui.cli import register_tui_commands
 
 console = Console()
@@ -29,30 +31,23 @@ def build_parser() -> argparse.ArgumentParser:
     register_tools_commands(sub)
     register_mcp_commands(sub)
     register_engine_commands(sub)
-    register_task_commands(sub)
+    register_tasks_commands(sub)
     register_tui_commands(sub)
 
     completion = sub.add_parser("completion", help="Generate shell completion")
     completion.add_argument("shell", choices=["bash", "zsh"])
-    completion.set_defaults(func=cmd_completion)
+    completion.set_defaults(func=cmd_completion, subcommands=sub.choices)
     return parser
 
 
 def cmd_completion(args: argparse.Namespace) -> int:
     # Derived from the parser so a new subcommand cannot drift out of the script.
-    commands = " ".join(_subcommand_names(build_parser()))
+    commands = " ".join(args.subcommands)
     if args.shell == "bash":
         console.print(f"complete -W '{commands}' cud")
     else:
         console.print(f"#compdef cud\n_arguments '1:command:({commands})'")
     return 0
-
-
-def _subcommand_names(parser: argparse.ArgumentParser) -> list[str]:
-    for action in parser._actions:
-        if isinstance(action, argparse._SubParsersAction):
-            return list(action.choices)
-    return []  # pragma: no cover - build_parser always registers subcommands
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except Exception as exc:
         # Anything else is a bug: keep the traceback so it is actionable.
-        _log.exception("Unhandled error in the '%s' command", getattr(args, "command", "?"))
+        _log.exception("Unhandled error in the '%s' command", args.command)
         console.print(f"[red]Unexpected error:[/red] {type(exc).__name__}: {exc}")
         return 1
 

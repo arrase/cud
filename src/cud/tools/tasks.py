@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
-import argparse
 import logging
+import shutil
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from croniter import croniter
-from rich.console import Console
-from rich.table import Table
 
-from cud.config.paths import agent_home
-from cud.tools._frontmatter import parse_frontmatter
+from cud.config.paths import is_safe_name, validate_safe_name
+from cud.tools._frontmatter import parse_frontmatter, render_frontmatter
 
-console = Console()
 _log = logging.getLogger(__name__)
 
 
@@ -30,6 +28,10 @@ class TaskCard:
     enabled: bool
     path: Path
     prompt: str
+
+
+def is_valid_schedule(schedule: str) -> bool:
+    return bool(schedule) and croniter.is_valid(schedule)
 
 
 def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
@@ -54,13 +56,13 @@ def _parse_task_file(task_file: Path) -> TaskCard | None:
     name = metadata.get("name") or task_file.parent.name
     schedule = str(metadata.get("schedule") or "").strip()
     if not schedule:
-        return None  # A task without schedule is invalid.
-    if not croniter.is_valid(schedule):
+        return None
+    if not is_valid_schedule(schedule):
         _log.warning("Task '%s': invalid cron expression %r; skipping", task_file, schedule)
         return None
     prompt = body.strip()
     if not prompt:
-        return None  # A task without prompt is useless.
+        return None
     return TaskCard(
         name=str(name),
         description=str(metadata.get("description") or ""),
@@ -74,7 +76,7 @@ def _parse_task_file(task_file: Path) -> TaskCard | None:
 
 
 def _int_or_none(value: Any) -> int | None:
-    if value is None:
+    if value is None or isinstance(value, bool):
         return None
     try:
         return int(value)
@@ -94,50 +96,61 @@ def next_run(schedule: str, now: datetime) -> datetime | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# CLI Commands
-# ---------------------------------------------------------------------------
+def write_task_entry(tasks_dir: Path, entry: Mapping[str, Any]) -> None:
+    dir_name = validate_safe_name(str(entry["dir_name"]))
+    task_dir = tasks_dir / dir_name
+    task_dir.mkdir(parents=True, exist_ok=True)
 
-def register_task_commands(sub: argparse._SubParsersAction) -> None:
-    task = sub.add_parser("task", help="Manage periodic tasks")
-    task_sub = task.add_subparsers(dest="task_command", required=True)
-    task_list = task_sub.add_parser("list", help="List scheduled tasks")
-    task_list.add_argument("agent")
-    task_list.set_defaults(func=cmd_task_list)
+    metadata: dict[str, Any] = {
+        "name": entry["name"],
+        "schedule": entry["schedule"],
+        "enabled": entry["enabled"],
+    }
+    if entry["description"]:
+        metadata["description"] = entry["description"]
+    if entry["channel_id"] is not None:
+        metadata["channel_id"] = entry["channel_id"]
+    if entry["user_id"] is not None:
+        metadata["user_id"] = entry["user_id"]
 
-
-def _task_destination(task: TaskCard) -> str:
-    if task.channel_id is not None:
-        return f"channel:{task.channel_id}"
-    if task.user_id is not None:
-        return f"DM:{task.user_id}"
-    return "none"
-
-
-def _task_next_run(task: TaskCard, now: datetime) -> str:
-    if not task.enabled:
-        return "—"
-    upcoming = next_run(task.schedule, now)
-    return upcoming.strftime("%Y-%m-%d %H:%M UTC") if upcoming else "invalid cron"
+    body = "\n" + str(entry["prompt"]).lstrip("\n")
+    content = render_frontmatter(metadata, body)
+    (task_dir / "TASK.md").write_text(content, encoding="utf-8")
 
 
-def cmd_task_list(args: argparse.Namespace) -> int:
-    directory = agent_home(args.agent)
-    tasks_dir = directory / "workspace" / "tasks"
-    tasks = discover_tasks(tasks_dir)
-    if not tasks:
-        console.print(f"No tasks found in {tasks_dir}")
-    else:
-        table = Table("Name", "Schedule", "Destination", "Enabled", "Next Run")
-        now = datetime.now(UTC)
-        for task in tasks:
-            table.add_row(
-                task.name,
-                task.schedule,
-                _task_destination(task),
-                "✓" if task.enabled else "✗",
-                _task_next_run(task, now),
-            )
-        console.print(table)
-    return 0
+def remove_deleted_tasks(
+    tasks_dir: Path,
+    deleted_dirs: Iterable[str],
+    live_dirs: Iterable[str] = (),
+) -> None:
+    """Remove only the directories the user explicitly deleted."""
+    for dir_name in set(deleted_dirs) - set(live_dirs):
+        if not is_safe_name(dir_name):
+            continue
+        target = tasks_dir / dir_name
+        if target.is_dir() and not target.is_symlink():
+            shutil.rmtree(target)
+
+
+def save_tasks(
+    tasks_dir: Path,
+    entries: Iterable[Mapping[str, Any]],
+    deleted_dirs: Iterable[str] = (),
+) -> list[str]:
+    """Write all task entries to *tasks_dir* and remove deleted ones.
+
+    Returns directory names that could not be written because they are unsafe.
+    """
+    tasks_dir.mkdir(parents=True, exist_ok=True)
+    skipped: list[str] = []
+    live_dirs: set[str] = set()
+    for entry in entries:
+        dir_name = str(entry["dir_name"])
+        if not is_safe_name(dir_name):
+            skipped.append(dir_name)
+            continue
+        live_dirs.add(dir_name)
+        write_task_entry(tasks_dir, entry)
+    remove_deleted_tasks(tasks_dir, deleted_dirs, live_dirs)
+    return skipped
 

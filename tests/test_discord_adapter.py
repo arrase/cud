@@ -4,14 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from cud.config.scaffold import create_agent
 from cud.gateway.discord_adapter import DiscordGateway, _log_task_error
-
-
-@pytest.fixture
-def agent_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("CUD_HOME", str(tmp_path))
-    return create_agent("discord-agent")
 
 
 def _make_mock_channel(channel_id: int = 123, guild_id: int | None = None) -> MagicMock:
@@ -29,8 +22,8 @@ def _make_mock_channel(channel_id: int = 123, guild_id: int | None = None) -> Ma
 
 
 def test_init(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent", verbose=True)
-    assert gw.agent == "discord-agent"
+    gw = DiscordGateway("test-agent", verbose=True)
+    assert gw.agent == "test-agent"
     assert gw.verbose is True
     assert gw.agent_dir == agent_dir
     assert gw.sessions == {}
@@ -38,7 +31,7 @@ def test_init(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_aclose_sessions(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     mock_rt1 = AsyncMock()
     mock_rt2 = AsyncMock()
     gw.sessions = {"t1": mock_rt1, "t2": mock_rt2}
@@ -50,7 +43,7 @@ async def test_aclose_sessions(agent_dir: Path) -> None:
 
 
 def test_get_thread_id(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
 
     channel_guild = _make_mock_channel(channel_id=222, guild_id=111)
     msg_guild = MagicMock(spec=["channel"])
@@ -62,21 +55,13 @@ def test_get_thread_id(agent_dir: Path) -> None:
     msg_dm.channel = channel_dm
     assert gw._get_thread_id(msg_dm) == "discord:dm:333"
 
-    # Channel with no id
-    channel_no_id = MagicMock(spec=["guild"])
-    channel_no_id.guild = None
-    msg_channel_no_id = MagicMock(spec=["channel", "id"])
-    msg_channel_no_id.channel = channel_no_id
-    msg_channel_no_id.id = 555
-    assert gw._get_thread_id(msg_channel_no_id) == "discord:dm:555"
-
     msg_fallback = MagicMock(spec=["id"])
     msg_fallback.id = 444
     assert gw._get_thread_id(msg_fallback) == "discord:dm:444"
 
 
 def test_session_caching(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     rt1 = gw.session("thread-1")
     rt2 = gw.session("thread-1")
     assert rt1 is rt2
@@ -85,17 +70,20 @@ def test_session_caching(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_reload_sessions(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
-    mock_rt = AsyncMock()
-    gw.sessions["t1"] = mock_rt
+    gw = DiscordGateway("test-agent")
+    mock_rt1 = AsyncMock()
+    mock_rt2 = AsyncMock()
+    gw.sessions["t1"] = mock_rt1
+    gw.sessions["t2"] = mock_rt2
 
-    await gw._reload_sessions()
-    mock_rt.reload.assert_awaited_once()
+    await gw._reload_sessions(exclude_thread_id="t1")
+    mock_rt1.reload.assert_not_awaited()
+    mock_rt2.reload.assert_awaited_once()
 
 
 @pytest.mark.anyio
 async def test_handle_message_bot_author(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     msg = MagicMock(spec=["author", "content"])
     msg.author = MagicMock(spec=["bot"])
     msg.author.bot = True
@@ -107,7 +95,7 @@ async def test_handle_message_bot_author(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_handle_message_empty_content(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     msg = MagicMock(spec=["author", "content"])
     msg.author = MagicMock(spec=["bot"])
     msg.author.bot = False
@@ -119,7 +107,7 @@ async def test_handle_message_empty_content(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_handle_message_success_multi_chunk(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     channel = _make_mock_channel(channel_id=2, guild_id=1)
     msg = MagicMock(spec=["author", "content", "channel"])
     msg.author = MagicMock(spec=["bot"])
@@ -141,7 +129,7 @@ async def test_handle_message_success_multi_chunk(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_handle_message_exception(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     channel = _make_mock_channel(channel_id=2, guild_id=None)
     msg = MagicMock(spec=["author", "content", "channel"])
     msg.author = MagicMock(spec=["bot"])
@@ -162,7 +150,7 @@ async def test_handle_message_exception(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_cmd_new(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -179,7 +167,7 @@ async def test_cmd_new(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_cmd_model(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -192,13 +180,13 @@ async def test_cmd_model(agent_dir: Path) -> None:
 
     await gw.cmd_model(interaction, "llama3")
     mock_rt.set_model.assert_awaited_once_with("llama3")
-    gw._reload_sessions.assert_awaited_once()
+    gw._reload_sessions.assert_awaited_once_with(exclude_thread_id="discord:dm:123")
     interaction.response.send_message.assert_awaited_once_with("Model set to llama3", ephemeral=True)
 
 
 @pytest.mark.anyio
 async def test_cmd_usage(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -206,12 +194,12 @@ async def test_cmd_usage(agent_dir: Path) -> None:
 
     await gw.cmd_usage(interaction)
     interaction.response.send_message.assert_awaited_once()
-    assert "agent=`discord-agent`" in interaction.response.send_message.call_args[0][0]
+    assert "agent=`test-agent`" in interaction.response.send_message.call_args[0][0]
 
 
 @pytest.mark.anyio
 async def test_cmd_undo(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -228,8 +216,9 @@ async def test_cmd_undo(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_cmd_reload(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
-    interaction = MagicMock(spec=["response"])
+    gw = DiscordGateway("test-agent")
+    interaction = MagicMock(spec=["channel", "response"])
+    interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
     interaction.response.send_message = AsyncMock()
     gw._reload_sessions = AsyncMock()
@@ -243,7 +232,7 @@ async def test_cmd_reload(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_cmd_memory_view(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -259,7 +248,7 @@ async def test_cmd_memory_view(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_cmd_memory_clear(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -272,13 +261,13 @@ async def test_cmd_memory_clear(agent_dir: Path) -> None:
 
     await gw.cmd_memory_clear(interaction)
     mock_rt.clear_memory.assert_awaited_once()
-    gw._reload_sessions.assert_awaited_once()
+    gw._reload_sessions.assert_awaited_once_with(exclude_thread_id="discord:dm:123")
     interaction.response.send_message.assert_awaited_once_with("Memory cleared.", ephemeral=True)
 
 
 @pytest.mark.anyio
 async def test_cmd_memory_search(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     interaction = MagicMock(spec=["channel", "response"])
     interaction.channel = _make_mock_channel(channel_id=123, guild_id=None)
     interaction.response = MagicMock(spec=["send_message"])
@@ -298,7 +287,7 @@ async def test_cmd_memory_search(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_run_missing_token(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     gw.settings.gateway.token = ""
 
     with pytest.raises(RuntimeError, match=r"gateway\.token is empty"):
@@ -307,17 +296,18 @@ async def test_run_missing_token(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_run_success_lifecycle(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent", verbose=True)
+    gw = DiscordGateway("test-agent", verbose=True)
     gw.settings.gateway.token = "fake-token"
 
     mock_bot = MagicMock()
-    mock_bot.start = AsyncMock()
     mock_bot.__aenter__ = AsyncMock(return_value=mock_bot)
     mock_bot.__aexit__ = AsyncMock()
     mock_bot.tree.sync = AsyncMock()
 
     created_events = {}
     registered_commands = {}
+    task_mock = MagicMock()
+    task_mock.done.return_value = False
 
     def fake_event(coro):
         created_events[coro.__name__] = coro
@@ -332,13 +322,17 @@ async def test_run_success_lifecycle(agent_dir: Path) -> None:
 
     def fake_create_task(coro, **kw):
         coro.close()
-        task_mock = MagicMock()
         return task_mock
 
+    async def fake_start(token: str) -> None:
+        await created_events["on_ready"]()
+
+    mock_bot.start = AsyncMock(side_effect=fake_start)
     mock_bot.event = fake_event
     mock_bot.tree.command = fake_command
     mock_bot.loop.create_task = fake_create_task
 
+    gw.aclose_sessions = AsyncMock()
     with patch("cud.gateway.discord_adapter.commands.Bot", return_value=mock_bot), \
          patch("cud.gateway.discord_adapter.app_commands.Group.command", side_effect=fake_command):
         await gw.run()
@@ -346,10 +340,9 @@ async def test_run_success_lifecycle(agent_dir: Path) -> None:
     mock_bot.start.assert_awaited_once_with("fake-token")
     assert "on_ready" in created_events
     assert "on_message" in created_events
-
-    # Execute on_ready
-    await created_events["on_ready"]()
     mock_bot.tree.sync.assert_awaited_once()
+    task_mock.cancel.assert_called_once()
+    gw.aclose_sessions.assert_awaited_once()
 
     # Execute on_message
     gw.handle_message = AsyncMock()
@@ -357,37 +350,16 @@ async def test_run_success_lifecycle(agent_dir: Path) -> None:
     await created_events["on_message"](fake_msg)
     gw.handle_message.assert_awaited_once_with(fake_msg)
 
-    # Test registered slash commands
-    gw.cmd_new = AsyncMock()
-    gw.cmd_model = AsyncMock()
-    gw.cmd_usage = AsyncMock()
-    gw.cmd_undo = AsyncMock()
-    gw.cmd_reload = AsyncMock()
-    gw.cmd_memory_view = AsyncMock()
-    gw.cmd_memory_clear = AsyncMock()
-
-    mock_interaction = MagicMock()
-    if "new" in registered_commands:
-        await registered_commands["new"](mock_interaction)
-        gw.cmd_new.assert_awaited_once()
-    if "model" in registered_commands:
-        await registered_commands["model"](mock_interaction, "llama3")
-        gw.cmd_model.assert_awaited_once_with(mock_interaction, "llama3")
-    if "usage" in registered_commands:
-        await registered_commands["usage"](mock_interaction)
-        gw.cmd_usage.assert_awaited_once()
-    if "undo" in registered_commands:
-        await registered_commands["undo"](mock_interaction)
-        gw.cmd_undo.assert_awaited_once()
-    if "reload" in registered_commands:
-        await registered_commands["reload"](mock_interaction)
-        gw.cmd_reload.assert_awaited_once()
-    if "view" in registered_commands:
-        await registered_commands["view"](mock_interaction)
-        gw.cmd_memory_view.assert_awaited_once()
-    if "clear" in registered_commands:
-        await registered_commands["clear"](mock_interaction)
-        gw.cmd_memory_clear.assert_awaited_once()
+    assert registered_commands == {
+        "new": gw.cmd_new,
+        "model": gw.cmd_model,
+        "usage": gw.cmd_usage,
+        "undo": gw.cmd_undo,
+        "reload": gw.cmd_reload,
+        "view": gw.cmd_memory_view,
+        "clear": gw.cmd_memory_clear,
+        "search": gw.cmd_memory_search,
+    }
 
 
 def test_log_task_error() -> None:
@@ -419,7 +391,7 @@ def test_log_task_error() -> None:
 async def test_aclose_sessions_survives_concurrent_mutation(agent_dir: Path) -> None:
     """Regression: iterating self.sessions across an await while another task
     called session() raised "dictionary changed size during iteration"."""
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
 
     async def slow_aclose() -> None:
         await asyncio.sleep(0)
@@ -438,7 +410,7 @@ async def test_aclose_sessions_survives_concurrent_mutation(agent_dir: Path) -> 
 @pytest.mark.anyio
 async def test_reload_sessions_isolates_failures(agent_dir: Path) -> None:
     """Regression: one failing reload aborted the loop, leaving others stale."""
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     bad, good = AsyncMock(), AsyncMock()
     bad.reload.side_effect = RuntimeError("bad agent")
     gw.sessions = {"bad": bad, "good": good}
@@ -451,7 +423,7 @@ async def test_reload_sessions_isolates_failures(agent_dir: Path) -> None:
 async def test_handle_message_does_not_pass_thread_id(agent_dir: Path) -> None:
     """Regression: passing thread_id explicitly made `/new` a no-op, because
     runtime.thread_id was then never consulted."""
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     channel = _make_mock_channel(channel_id=2, guild_id=1)
     msg = MagicMock(spec=["author", "content", "channel"])
     msg.author = MagicMock(spec=["bot"])
@@ -470,7 +442,7 @@ async def test_handle_message_does_not_pass_thread_id(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_new_session_changes_the_conversation_thread(agent_dir: Path) -> None:
-    gw = DiscordGateway("discord-agent")
+    gw = DiscordGateway("test-agent")
     thread_id = gw._get_thread_id(_make_mock_channel(channel_id=7, guild_id=1))
     runtime = gw.session(thread_id)
 

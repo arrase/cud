@@ -51,3 +51,12 @@ def test_frontmatter_roundtrip() -> None:
     meta, body = parse_frontmatter(rendered)
     assert meta == original_meta
     assert body == original_body
+
+
+def test_frontmatter_without_trailing_newline_is_parsed() -> None:
+    """Regression: the regex required a newline after the closing `---`, so a
+    hand-written file ending at the delimiter parsed as having no frontmatter."""
+    exact = "---\nname: b\nschedule: '* * * * *'\n---"
+    assert parse_frontmatter(exact)[0] == {"name": "b", "schedule": "* * * * *"}
+    assert parse_frontmatter(exact + "\n")[0] == {"name": "b", "schedule": "* * * * *"}
+    assert parse_frontmatter(exact + "\n\nbody")[1].strip() == "body"

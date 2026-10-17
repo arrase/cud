@@ -82,8 +82,6 @@ def _resolve_env(env: dict[str, str]) -> dict[str, str] | None:
 
     Returns the resolved dict, or ``None`` when any variable is missing.
     """
-    if not env:
-        return {}
     resolved: dict[str, str] = {}
     for key, value in env.items():
         referenced = _ENV_RE.findall(value)

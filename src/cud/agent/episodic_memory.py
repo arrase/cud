@@ -14,6 +14,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, tool
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from rich.table import Table
 
 _serializer = JsonPlusSerializer()
 
@@ -34,6 +35,11 @@ def connect_history(db_path: Path) -> Iterator[sqlite3.Connection]:
         raise HistoryError(f"Failed to open history database {db_path}: {e}") from e
     try:
         yield conn
+    except sqlite3.OperationalError as e:
+        if "no such table" not in str(e):
+            raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
+    except (sqlite3.Error, OSError) as e:
+        raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
     finally:
         conn.close()
 
@@ -49,23 +55,23 @@ def format_iso_timestamp(ts: str) -> str:
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
-def extract_text(content: Any, *, sep: str = " ") -> str:
+def extract_text(content: Any) -> str:
     """Convert agent payload content into plain text."""
     if isinstance(content, str):
         return content.strip()
     if content is None:
         return ""
     if isinstance(content, (list, tuple)):
-        return sep.join(filter(None, (extract_text(item, sep=sep) for item in content))).strip()
+        return " ".join(filter(None, (extract_text(item) for item in content))).strip()
     if isinstance(content, dict):
         for key in ("text", "content"):
             if key in content:
-                return extract_text(content[key], sep=sep)
+                return extract_text(content[key])
         return ""
     return str(content)
 
 
-def _message_role_and_text(msg: Any) -> tuple[str, str]:
+def message_role_and_text(msg: Any) -> tuple[str, str]:
     """Extract role and stripped text content from a message object or dict."""
     if isinstance(msg, dict):
         role = msg.get("type") or msg.get("role")
@@ -73,7 +79,7 @@ def _message_role_and_text(msg: Any) -> tuple[str, str]:
     else:
         role = getattr(msg, "type", None)
         content = getattr(msg, "content", None)
-    return str(role or ""), extract_text(content)
+    return str(role or "").lower(), extract_text(content)
 
 
 def _extract_user_prompts(cursor: sqlite3.Cursor) -> list[str]:
@@ -84,7 +90,7 @@ def _extract_user_prompts(cursor: sqlite3.Cursor) -> list[str]:
         msgs = _serializer.loads_typed((typ, val))
         msg_list = msgs if isinstance(msgs, list) else [msgs]
         for msg in msg_list:
-            role, text = _message_role_and_text(msg)
+            role, text = message_role_and_text(msg)
             if role in ("human", "user") and text and text not in seen:
                 seen.add(text)
                 prompts.append(text)
@@ -96,26 +102,19 @@ def load_past_user_prompts(db_path: Path) -> list[str]:
     if not db_path.exists():
         return []
 
-    try:
-        with connect_history(db_path) as conn:
-            return _extract_user_prompts(conn.cursor())
-    except sqlite3.OperationalError as e:
-        if "no such table" in str(e):
-            return []
-        raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
-    except (sqlite3.Error, OSError) as e:
-        raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
+    prompts: list[str] = []
+    with connect_history(db_path) as conn:
+        prompts = _extract_user_prompts(conn.cursor())
+    return prompts
 
 
 def _read_history_checkpoints(cursor: sqlite3.Cursor, exclude_thread_id: str) -> dict[str, str]:
     thread_timestamps: dict[str, str] = {}
-    if exclude_thread_id:
-        cursor.execute(
-            "SELECT thread_id, type, checkpoint FROM checkpoints WHERE thread_id != ? ORDER BY rowid ASC",
-            (exclude_thread_id,),
-        )
-    else:
-        cursor.execute("SELECT thread_id, type, checkpoint FROM checkpoints ORDER BY rowid ASC")
+    cursor.execute(
+        "SELECT thread_id, type, checkpoint FROM checkpoints "
+        "WHERE rowid IN (SELECT MAX(rowid) FROM checkpoints WHERE thread_id != ? GROUP BY thread_id)",
+        (exclude_thread_id,),
+    )
     for tid, typ, chk in cursor.fetchall():
         c = _serializer.loads_typed((typ, chk))
         try:
@@ -128,27 +127,22 @@ def _read_history_checkpoints(cursor: sqlite3.Cursor, exclude_thread_id: str) ->
 def _read_history_messages(cursor: sqlite3.Cursor, exclude_thread_id: str) -> defaultdict[str, list[Any]]:
     thread_messages: defaultdict[str, list[Any]] = defaultdict(list)
     seen: defaultdict[str, set[str]] = defaultdict(set)
-    if exclude_thread_id:
-        cursor.execute(
-            "SELECT thread_id, type, value FROM writes "
-            "WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
-            (exclude_thread_id,),
-        )
-    else:
-        cursor.execute(
-            "SELECT thread_id, type, value FROM writes WHERE channel = 'messages' ORDER BY rowid ASC"
-        )
+    cursor.execute(
+        "SELECT thread_id, type, value FROM writes "
+        "WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
+        (exclude_thread_id,),
+    )
     for tid, typ, val in cursor.fetchall():
         msgs = _serializer.loads_typed((typ, val))
         for msg in (msgs if isinstance(msgs, list) else [msgs]):
             # A checkpoint may rewrite the full list rather than a delta, so
             # the same message id can appear in several rows.
-            msg_id = str(msg.get("id") or id(msg)) if isinstance(msg, dict) else str(
-                getattr(msg, "id", None) or id(msg)
-            )
-            if msg_id in seen[tid]:
-                continue
-            seen[tid].add(msg_id)
+            raw_id = msg.get("id") if isinstance(msg, dict) else getattr(msg, "id", None)
+            if raw_id is not None:
+                msg_id = str(raw_id)
+                if msg_id in seen[tid]:
+                    continue
+                seen[tid].add(msg_id)
             thread_messages[tid].append(msg)
     return thread_messages
 
@@ -164,17 +158,12 @@ def load_past_conversations(
     if not db_path.exists():
         return {}
 
-    try:
-        with connect_history(db_path) as conn:
-            cursor = conn.cursor()
-            thread_timestamps = _read_history_checkpoints(cursor, exclude_thread_id)
-            thread_messages = _read_history_messages(cursor, exclude_thread_id)
-    except sqlite3.OperationalError as e:
-        if "no such table" in str(e):
-            return {}
-        raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
-    except (sqlite3.Error, OSError) as e:
-        raise HistoryError(f"Failed to read history database {db_path}: {e}") from e
+    thread_timestamps: dict[str, str] = {}
+    thread_messages: defaultdict[str, list[Any]] = defaultdict(list)
+    with connect_history(db_path) as conn:
+        cursor = conn.cursor()
+        thread_timestamps = _read_history_checkpoints(cursor, exclude_thread_id)
+        thread_messages = _read_history_messages(cursor, exclude_thread_id)
 
     conversations: dict[str, dict[str, Any]] = {}
     for tid, msgs in thread_messages.items():
@@ -199,7 +188,7 @@ def _format_snippet(role: str, text: str) -> str:
 def _extract_dialogue(msgs: list[Any]) -> list[tuple[str, str]]:
     dialogue: list[tuple[str, str]] = []
     for msg in msgs:
-        role, text = _message_role_and_text(msg)
+        role, text = message_role_and_text(msg)
         if role in ("human", "ai", "user", "assistant") and text:
             dialogue.append((role, text))
     return dialogue
@@ -268,18 +257,33 @@ def format_past_conversations_context(results: list[dict[str, Any]]) -> str:
 
     lines: list[str] = [f"Found {len(results)} relevant past conversation(s) in episodic memory:\n"]
     for idx, item in enumerate(results, start=1):
-        tid = item["thread_id"]
-        short_id = tid[:8]
-        header_date = f" - [Date: {item['formatted_date']}]"
         lines.append(
-            f"### Session #{idx} ({short_id}){header_date} - [Total messages: {item['total_messages']}]"
+            f"### Session #{idx} ({item['thread_id'][:8]})"
+            f" - [Date: {item['formatted_date']}]"
+            f" - [Total messages: {item['total_messages']}]"
         )
         for snippet in item["snippets"]:
-            indented = "\n  ".join(snippet.splitlines())
-            lines.append(f"  {indented}")
+            lines.append("  " + "\n  ".join(snippet.splitlines()))
         lines.append("")
 
     return "\n".join(lines).strip()
+
+
+def build_memory_search_table(query: str, results: list[dict[str, Any]]) -> Table:
+    """Build a Rich table displaying episodic memory search results."""
+    table = Table(title=f"Episodic Memory Search: '{query}'")
+    table.add_column("Session ID", style="bold cyan")
+    table.add_column("Date", style="dim")
+    table.add_column("Score", justify="right")
+    table.add_column("Snippet Preview")
+    for item in results:
+        table.add_row(
+            item["thread_id"][:8],
+            item["formatted_date"],
+            str(item["score"]),
+            "\n".join(item["snippets"][:2]),
+        )
+    return table
 
 
 def create_search_past_conversations_tool(

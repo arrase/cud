@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
+from typing import Any
 
 import discord
 from discord import app_commands
@@ -19,8 +19,6 @@ from cud.gateway.scheduler import TaskScheduler
 
 _log = logging.getLogger(__name__)
 
-_SAFE = re.compile(r"[^A-Za-z0-9_.:-]+")
-
 
 class DiscordGateway:
     def __init__(self, agent: str, *, verbose: bool = False):
@@ -33,7 +31,7 @@ class DiscordGateway:
         self.sessions: dict[str, AgentRuntime] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self.bot: commands.Bot | None = None
-        self.scheduler = TaskScheduler(self)
+        self.scheduler = TaskScheduler(self.agent_dir, lambda: self.bot)
 
     async def aclose_sessions(self) -> None:
         """Close all active runtime sessions.
@@ -52,15 +50,13 @@ class DiscordGateway:
 
     # -- Session management --------------------------------------------------
 
-    def _get_thread_id(self, message_or_channel: object) -> str:
+    def _get_thread_id(self, message_or_channel: Any) -> str:
         """Map a Discord channel/thread/message object to a stable LangGraph thread_id."""
         channel = getattr(message_or_channel, "channel", message_or_channel)
         guild = getattr(channel, "guild", None)
-        guild_id = getattr(guild, "id", "dm")
-        channel_id = getattr(channel, "id", None)
-        if channel_id is None:
-            channel_id = getattr(message_or_channel, "id", "unknown")
-        return _SAFE.sub("_", f"discord:{guild_id}:{channel_id}")
+        guild_id = guild.id if guild is not None else "dm"
+        channel_id = getattr(channel, "id", "unknown")
+        return f"discord:{guild_id}:{channel_id}"
 
     def session(self, thread_id: str) -> AgentRuntime:
         runtime = self.sessions.get(thread_id)
@@ -69,11 +65,13 @@ class DiscordGateway:
             self.sessions[thread_id] = runtime
         return runtime
 
-    async def _reload_sessions(self) -> None:
+    async def _reload_sessions(self, exclude_thread_id: str = "") -> None:
         """Reload config and every live session; one failure must not abort the rest."""
         self.settings = load_settings(self.agent_dir)
         # Snapshot both before awaiting: the dict can change while we reload.
-        runtimes = list(self.sessions.items())
+        runtimes = [
+            (tid, rt) for tid, rt in self.sessions.items() if tid != exclude_thread_id
+        ]
         results = await asyncio.gather(*(rt.reload() for _, rt in runtimes), return_exceptions=True)
         for (thread_id, _), exc in zip(runtimes, results, strict=True):
             if exc is not None:
@@ -121,15 +119,17 @@ class DiscordGateway:
 
     async def cmd_new(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        runtime = self.session(thread_id)
-        result = runtime.new_session()
+        async with self._thread_lock(thread_id):
+            result = self.session(thread_id).new_session()
         await interaction.response.send_message(result, ephemeral=True)
 
+    @app_commands.describe(model_name="Ollama model id")
     async def cmd_model(self, interaction: discord.Interaction, model_name: str) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        # set_model() persists and reloads this runtime itself.
-        result = await self.session(thread_id).set_model(model_name)
-        await self._reload_sessions()
+        async with self._thread_lock(thread_id):
+            # set_model() persists and reloads this runtime itself.
+            result = await self.session(thread_id).set_model(model_name)
+            await self._reload_sessions(exclude_thread_id=thread_id)
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_usage(self, interaction: discord.Interaction) -> None:
@@ -141,12 +141,15 @@ class DiscordGateway:
 
     async def cmd_undo(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        result = await self.session(thread_id).undo_last_exchange()
+        async with self._thread_lock(thread_id):
+            result = await self.session(thread_id).undo_last_exchange()
         await interaction.response.send_message(result, ephemeral=True)
 
     async def cmd_reload(self, interaction: discord.Interaction) -> None:
-        await self._reload_sessions()
-        self.scheduler.reload()
+        thread_id = self._get_thread_id(interaction.channel)
+        async with self._thread_lock(thread_id):
+            await self._reload_sessions()
+            self.scheduler.reload()
         await interaction.response.send_message("Agent and tasks reloaded.", ephemeral=True)
 
     async def cmd_memory_view(self, interaction: discord.Interaction) -> None:
@@ -156,10 +159,12 @@ class DiscordGateway:
 
     async def cmd_memory_clear(self, interaction: discord.Interaction) -> None:
         thread_id = self._get_thread_id(interaction.channel)
-        result = await self.session(thread_id).clear_memory()
-        await self._reload_sessions()
+        async with self._thread_lock(thread_id):
+            result = await self.session(thread_id).clear_memory()
+            await self._reload_sessions(exclude_thread_id=thread_id)
         await interaction.response.send_message(result, ephemeral=True)
 
+    @app_commands.describe(query="Keywords or topics to search for")
     async def cmd_memory_search(self, interaction: discord.Interaction, query: str) -> None:
         thread_id = self._get_thread_id(interaction.channel)
         runtime = self.session(thread_id)
@@ -176,7 +181,6 @@ class DiscordGateway:
         # `process_commands` is never reached, but Bot still requires the arg.
         bot = commands.Bot(command_prefix="", intents=intents)
         self.bot = bot
-        gw = self  # Capture for closures below.
         scheduler_task: asyncio.Task[None] | None = None
 
         @bot.event
@@ -186,60 +190,39 @@ class DiscordGateway:
             nonlocal scheduler_task
             await bot.tree.sync()
             if scheduler_task is None or scheduler_task.done():
-                scheduler_task = bot.loop.create_task(gw.scheduler.run(), name="cud-scheduler")
+                scheduler_task = bot.loop.create_task(self.scheduler.run(), name="cud-scheduler")
                 scheduler_task.add_done_callback(_log_task_error)
-            if gw.verbose:
+            if self.verbose:
                 _log.info("Discord gateway ready as %s", bot.user)
 
         @bot.event
         async def on_message(message: discord.Message) -> None:
-            await gw.handle_message(message)
+            await self.handle_message(message)
 
         # -- Register slash commands -----------------------------------------
 
-        @bot.tree.command(name="new", description="Start a new Cud session in this Discord thread.")
-        async def slash_new(interaction: discord.Interaction) -> None:
-            await gw.cmd_new(interaction)
-
-        @bot.tree.command(name="model", description="Temporarily switch this agent's configured model.")
-        @app_commands.describe(model_name="Ollama model id")
-        async def slash_model(interaction: discord.Interaction, model_name: str) -> None:
-            await gw.cmd_model(interaction, model_name)
-
-        @bot.tree.command(name="usage", description="Show Cud runtime usage summary.")
-        async def slash_usage(interaction: discord.Interaction) -> None:
-            await gw.cmd_usage(interaction)
-
-        @bot.tree.command(name="undo", description="Remove the last exchange from this thread.")
-        async def slash_undo(interaction: discord.Interaction) -> None:
-            await gw.cmd_undo(interaction)
-
-        @bot.tree.command(name="reload", description="Reload tools and prompt for this agent.")
-        async def slash_reload(interaction: discord.Interaction) -> None:
-            await gw.cmd_reload(interaction)
+        bot.tree.command(name="new", description="Start a new Cud session in this Discord thread.")(self.cmd_new)
+        bot.tree.command(name="model", description="Temporarily switch this agent's configured model.")(self.cmd_model)
+        bot.tree.command(name="usage", description="Show Cud runtime usage summary.")(self.cmd_usage)
+        bot.tree.command(name="undo", description="Remove the last exchange from this thread.")(self.cmd_undo)
+        bot.tree.command(name="reload", description="Reload tools and prompt for this agent.")(self.cmd_reload)
 
         memory_group = app_commands.Group(name="memory", description="Manage Cud long-term memory.")
-
-        @memory_group.command(name="view", description="View MEMORY.md.")
-        async def slash_memory_view(interaction: discord.Interaction) -> None:
-            await gw.cmd_memory_view(interaction)
-
-        @memory_group.command(name="clear", description="Clear MEMORY.md.")
-        async def slash_memory_clear(interaction: discord.Interaction) -> None:
-            await gw.cmd_memory_clear(interaction)
-
-        @memory_group.command(name="search", description="Search past episodic conversations.")
-        @app_commands.describe(query="Keywords or topics to search for")
-        async def slash_memory_search(interaction: discord.Interaction, query: str) -> None:
-            await gw.cmd_memory_search(interaction, query)
-
+        memory_group.command(name="view", description="View MEMORY.md.")(self.cmd_memory_view)
+        memory_group.command(name="clear", description="Clear MEMORY.md.")(self.cmd_memory_clear)
+        memory_group.command(name="search", description="Search past episodic conversations.")(self.cmd_memory_search)
         bot.tree.add_command(memory_group)
 
         token = self.settings.gateway.token
         if not token:
             raise RuntimeError("gateway.token is empty; run `cud gateway setup <agent> discord --token ...`")
-        async with bot:
-            await bot.start(token)
+        try:
+            async with bot:
+                await bot.start(token)
+        finally:
+            if scheduler_task is not None and not scheduler_task.done():
+                scheduler_task.cancel()
+            await self.aclose_sessions()
 
 
 def _log_task_error(task: asyncio.Task[None]) -> None:
