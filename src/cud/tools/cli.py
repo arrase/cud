@@ -111,11 +111,11 @@ def cmd_tools_list(args: argparse.Namespace) -> int:
     skills = discover_skills(skills_dir)
     if not skills:
         console.print(f"No skills found in {skills_dir}")
-        return 0
-    table = Table("Name", "Description", "Path")
-    for skill in skills:
-        table.add_row(skill.name, skill.description, str(skill.path))
-    console.print(table)
+    else:
+        table = Table("Name", "Description", "Path")
+        for skill in skills:
+            table.add_row(skill.name, skill.description, str(skill.path))
+        console.print(table)
     return 0
 
 

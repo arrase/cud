@@ -100,6 +100,18 @@ _NUMERIC_FIELDS = {
 }
 
 
+def _coerce_numeric(owner: str, name: str, value: Any) -> int | float:
+    if (owner, name) == ("SubAgentSettings", "context_window") and value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}")
+    if (owner, name) == ("ModelSettings", "temperature"):
+        return float(value)
+    if not isinstance(value, int):
+        raise ValueError(f"settings field '{owner}.{name}' must be an integer, got {type(value).__name__}")
+    return value
+
+
 def _coerce(owner: str, name: str, value: Any) -> Any:
     """Check that *value* matches the declared type of settings field *name*."""
     key = (owner, name)
@@ -107,16 +119,8 @@ def _coerce(owner: str, name: str, value: Any) -> Any:
         if not isinstance(value, bool):
             raise ValueError(f"allow_traversal must be a boolean, got {type(value).__name__}")
         return value
-    if key == ("SubAgentSettings", "context_window") and value is None:
-        return 0
     if key in _NUMERIC_FIELDS:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}")
-        if key == ("ModelSettings", "temperature"):
-            return float(value)
-        if not isinstance(value, int):
-            raise ValueError(f"settings field '{owner}.{name}' must be an integer, got {type(value).__name__}")
-        return value
+        return _coerce_numeric(owner, name, value)
     if name in ("skills_paths", "args"):
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise ValueError(f"settings field '{owner}.{name}' must be a list of strings")
@@ -164,6 +168,18 @@ def format_subagent_mcp_server(srv: SubAgentMCPServer) -> str:
     return line
 
 
+def _split_mcp_server_env(line: str) -> tuple[str, dict[str, str]]:
+    if not (line.endswith("]") and ENV_MARKER in line):
+        return line, {}
+    head, _, env_blob = line.rpartition(ENV_MARKER)
+    env: dict[str, str] = {}
+    for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
+        key, sep, value = pair.partition("=")
+        if sep:
+            env[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+    return head.rstrip(), env
+
+
 def parse_subagent_mcp_servers(text: str) -> list[SubAgentMCPServer]:
     """Parse MCP server definitions from multi-line text.
 
@@ -176,14 +192,7 @@ def parse_subagent_mcp_servers(text: str) -> list[SubAgentMCPServer]:
         line = raw_line.strip()
         if not line:
             continue
-        env: dict[str, str] = {}
-        if line.endswith("]") and ENV_MARKER in line:
-            head, _, env_blob = line.rpartition(ENV_MARKER)
-            line = head.rstrip()
-            for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
-                key, sep, value = pair.partition("=")
-                if sep:
-                    env[urllib.parse.unquote(key)] = urllib.parse.unquote(value)
+        line, env = _split_mcp_server_env(line)
         try:
             parts = shlex.split(line)
         except ValueError:
@@ -245,6 +254,24 @@ def _atomic_write(path: Path, text: str) -> None:
         raise
 
 
+def _validate_subagent(sa: SubAgentSettings, seen: set[str]) -> None:
+    if not isinstance(sa.name, str) or not sa.name:
+        raise ValueError("subagent.name is required")
+    if sa.name in seen:
+        raise ValueError(f"duplicate subagent name: {sa.name!r}")
+    seen.add(sa.name)
+    if not isinstance(sa.description, str) or not isinstance(sa.system_prompt, str) or not isinstance(sa.model, str):
+        raise ValueError(f"subagent '{sa.name}': string fields must be strings")
+    if not isinstance(sa.skills_paths, list) or not all(isinstance(p, str) for p in sa.skills_paths):
+        raise ValueError(f"subagent '{sa.name}': skills_paths must be a list of strings")
+    if isinstance(sa.context_window, bool) or not isinstance(sa.context_window, int):
+        raise ValueError(
+            f"subagent '{sa.name}': context_window must be an integer, got {type(sa.context_window).__name__}"
+        )
+    if sa.context_window < 0:
+        raise ValueError(f"subagent '{sa.name}': context_window must not be negative")
+
+
 def validate_settings(settings: Settings) -> None:
     """Validate all settings and subagent invariants."""
     if not isinstance(settings.runtime.allow_traversal, bool):
@@ -269,22 +296,4 @@ def validate_settings(settings: Settings) -> None:
         raise ValueError("v1 supports only the discord gateway provider")
     seen: set[str] = set()
     for sa in settings.subagents:
-        if not isinstance(sa.name, str) or not sa.name:
-            raise ValueError("subagent.name is required")
-        if sa.name in seen:
-            raise ValueError(f"duplicate subagent name: {sa.name!r}")
-        seen.add(sa.name)
-        if (
-            not isinstance(sa.description, str)
-            or not isinstance(sa.system_prompt, str)
-            or not isinstance(sa.model, str)
-        ):
-            raise ValueError(f"subagent '{sa.name}': string fields must be strings")
-        if not isinstance(sa.skills_paths, list) or not all(isinstance(p, str) for p in sa.skills_paths):
-            raise ValueError(f"subagent '{sa.name}': skills_paths must be a list of strings")
-        if isinstance(sa.context_window, bool) or not isinstance(sa.context_window, int):
-            raise ValueError(
-                f"subagent '{sa.name}': context_window must be an integer, got {type(sa.context_window).__name__}"
-            )
-        if sa.context_window < 0:
-            raise ValueError(f"subagent '{sa.name}': context_window must not be negative")
+        _validate_subagent(sa, seen)

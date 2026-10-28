@@ -90,8 +90,9 @@ def test_write_task_entry_creates_task_file(tmp_path: Path) -> None:
 def test_write_task_entry_rejects_unsafe_dir_name(tmp_path: Path, bad_name: str) -> None:
     """Regression: the name became a path segment and escaped the tasks dir."""
     before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
+    entry = _task_entry(dir_name=bad_name)
     with pytest.raises(ValueError, match="alphanumeric"):
-        write_task_entry(tmp_path, _task_entry(dir_name=bad_name))
+        write_task_entry(tmp_path, entry)
     # Nothing may appear anywhere under tmp_path, nor next to it.
     assert sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*")) == before
     assert not (tmp_path.parent / "TASK.md").exists()

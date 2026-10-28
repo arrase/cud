@@ -39,6 +39,8 @@ _STYLE_WARNING = "cud.warning"
 _STYLE_ERROR = "cud.error"
 _COLOR_DIM_CYAN = "dim cyan"
 _COLOR_BOLD_CYAN = "bold cyan"
+_CMD_HELP = "/help"
+_CMD_QUIT = "/quit"
 
 _THEME = Theme(
     {
@@ -70,9 +72,9 @@ def _welcome_banner(agent_name: str, model_name: str, thread_id: str, console: C
     info_lines.append("\n  thread  ", style="dim")
     info_lines.append(thread_id, style="bright_white")
     info_lines.append("\n  ", style="dim")
-    info_lines.append("/help", style="cyan")
+    info_lines.append(_CMD_HELP, style="cyan")
     info_lines.append(" commands  ", style="dim")
-    info_lines.append("/quit", style="cyan")
+    info_lines.append(_CMD_QUIT, style="cyan")
     info_lines.append(" exit", style="dim")
 
     panel = Panel(
@@ -148,8 +150,8 @@ _COMMANDS_META = {
     "/memory view": "View agent memory",
     "/memory clear": "Clear agent memory",
     "/memory search ": "Search past sessions",
-    "/help": "Show commands",
-    "/quit": "Exit",
+    _CMD_HELP: "Show commands",
+    _CMD_QUIT: "Exit",
     "/exit": "Exit",
 }
 
@@ -210,7 +212,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
     command = raw_cmd.lower()
     args = args.strip()
 
-    if command in ("/quit", "/exit"):
+    if command in (_CMD_QUIT, "/exit"):
         _system_message("Goodbye!", _STYLE_DIM, console)
         return True
     if command == "/new":
@@ -230,7 +232,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
             return False
         result = await runtime.set_model(args)
         _system_message(result, _STYLE_SUCCESS, console)
-    elif command == "/help":
+    elif command == _CMD_HELP:
         _help_panel(console)
     else:
         _system_message(f"Unknown command: {command}", _STYLE_ERROR, console)
@@ -240,6 +242,20 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
 # ---------------------------------------------------------------------------
 # Main TUI loop
 # ---------------------------------------------------------------------------
+
+
+async def _load_prompt_history(runtime: AgentRuntime) -> InMemoryHistory:
+    prompt_history = InMemoryHistory()
+    # Reading history deserializes every row of the writes table: keep it off
+    # the event loop and never let a corrupt database kill the TUI at startup.
+    try:
+        past_prompts = await asyncio.to_thread(runtime.load_past_prompts)
+    except HistoryError as exc:
+        _log.warning("Could not load prompt history", exc_info=exc)
+        past_prompts = []
+    for prompt_text in past_prompts[-_MAX_HISTORY_PROMPTS:]:
+        prompt_history.append_string(prompt_text)
+    return prompt_history
 
 
 async def run_tui(agent_name: str, thread_id: str = "") -> int:
@@ -256,16 +272,7 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
     _welcome_banner(agent_name, model_name, thread_id, console)
 
     async with AgentRuntime(agent_dir, thread_id=thread_id) as runtime:
-        prompt_history = InMemoryHistory()
-        # Reading history deserializes every row of the writes table: keep it off
-        # the event loop and never let a corrupt database kill the TUI at startup.
-        try:
-            past_prompts = await asyncio.to_thread(runtime.load_past_prompts)
-        except HistoryError as exc:
-            _log.warning("Could not load prompt history", exc_info=exc)
-            past_prompts = []
-        for prompt_text in past_prompts[-_MAX_HISTORY_PROMPTS:]:
-            prompt_history.append_string(prompt_text)
+        prompt_history = await _load_prompt_history(runtime)
         session: PromptSession[str] = PromptSession(completer=_completer, history=prompt_history)
 
         while True:
