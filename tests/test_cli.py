@@ -135,9 +135,7 @@ def test_gateway_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     create_args = argparse.Namespace(name="gw-agent", template="default")
     cmd_agent_create(create_args)
 
-    setup_args = argparse.Namespace(
-        agent="gw-agent", platform="discord", token="bot_token_123"
-    )
+    setup_args = argparse.Namespace(agent="gw-agent", platform="discord", token="bot_token_123")
     assert cmd_gateway_setup(setup_args) == 0
 
     settings = load_settings(agent_home("gw-agent"))
@@ -146,9 +144,7 @@ def test_gateway_cli(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # A non-discord platform must be rejected, and must not brick the agent:
     # every later load_settings on a telegram/token config raises.
-    setup_tg = argparse.Namespace(
-        agent="gw-agent", platform="telegram", token="bot_token_tg"
-    )
+    setup_tg = argparse.Namespace(agent="gw-agent", platform="telegram", token="bot_token_tg")
     with pytest.raises(ValueError, match="discord gateway provider"):
         cmd_gateway_setup(setup_tg)
     assert load_settings(agent_home("gw-agent")).gateway.provider == "discord"
@@ -190,13 +186,15 @@ def test_agent_cli_memory() -> None:
     assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=False, search="docker", view=False)) == 0
 
     # Search with results
-    sample_res = [{
-        "thread_id": "thread-12345678",
-        "formatted_date": "2026-08-20 10:00 UTC",
-        "score": 2,
-        "snippets": ["[User]: How to dockerize FastAPI?"],
-        "total_messages": 2,
-    }]
+    sample_res = [
+        {
+            "thread_id": "thread-12345678",
+            "formatted_date": "2026-08-20 10:00 UTC",
+            "score": 2,
+            "snippets": ["[User]: How to dockerize FastAPI?"],
+            "total_messages": 2,
+        }
+    ]
     with patch("cud.agent.cli.search_past_conversations_in_db", return_value=sample_res):
         assert cmd_agent_memory(argparse.Namespace(name="mem-agent", clear=False, search="fastapi", view=False)) == 0
 

@@ -176,7 +176,7 @@ class AgentRuntime:
         # id: passing the kept messages back would re-add the removed ones.
         await graph.aupdate_state(
             config,
-            {"messages": [RemoveMessage(id=m.id) for m in messages[len(kept):]]},
+            {"messages": [RemoveMessage(id=m.id) for m in messages[len(kept) :]]},
         )
         return "Last exchange removed."
 

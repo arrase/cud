@@ -295,8 +295,7 @@ def test_duplicate_message_rows_are_deduped(tmp_path: Path) -> None:
     conn = sqlite3.connect(str(db))
     msgs = [
         HumanMessage(content="How do I dockerize a FastAPI application?", id="m1"),
-        AIMessage(content="You should create a Dockerfile using python:3.11-slim and install uvicorn.",
-                  id="m2"),
+        AIMessage(content="You should create a Dockerfile using python:3.11-slim and install uvicorn.", id="m2"),
     ]
     typ, val = serializer.dumps_typed(msgs)
     for row in range(2):
@@ -324,9 +323,7 @@ def test_duplicate_message_rows_are_deduped(tmp_path: Path) -> None:
         ({"other": 1}, "no timestamp"),
     ],
 )
-def test_corrupt_checkpoint_raises_history_error(
-    tmp_path: Path, payload: dict[str, object], message: str
-) -> None:
+def test_corrupt_checkpoint_raises_history_error(tmp_path: Path, payload: dict[str, object], message: str) -> None:
     """Regression: a raw ValueError/KeyError escaped into the LLM tool call."""
     db = tmp_path / "history.db"
     _seed_db(db)

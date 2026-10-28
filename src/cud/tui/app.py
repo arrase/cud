@@ -40,14 +40,16 @@ _STYLE_ERROR = "cud.error"
 _COLOR_DIM_CYAN = "dim cyan"
 _COLOR_BOLD_CYAN = "bold cyan"
 
-_THEME = Theme({
-    "cud.accent": _COLOR_BOLD_CYAN,
-    _STYLE_DIM: "dim",
-    _STYLE_SUCCESS: "green",
-    _STYLE_WARNING: "yellow",
-    _STYLE_ERROR: "bold red",
-    "cud.agent_border": _COLOR_DIM_CYAN,
-})
+_THEME = Theme(
+    {
+        "cud.accent": _COLOR_BOLD_CYAN,
+        _STYLE_DIM: "dim",
+        _STYLE_SUCCESS: "green",
+        _STYLE_WARNING: "yellow",
+        _STYLE_ERROR: "bold red",
+        "cud.agent_border": _COLOR_DIM_CYAN,
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -87,12 +89,14 @@ def _agent_response(content: str, agent_name: str, elapsed: float, console: Cons
     """Render the agent's response with a left-border panel."""
     ts = datetime.now().strftime("%H:%M:%S")
 
-    console.print(Text.assemble(
-        ("╭ ", _COLOR_DIM_CYAN),
-        (agent_name, _COLOR_BOLD_CYAN),
-        (f"  {ts}", "dim"),
-        (f"  {elapsed:.1f}s", "dim"),
-    ))
+    console.print(
+        Text.assemble(
+            ("╭ ", _COLOR_DIM_CYAN),
+            (agent_name, _COLOR_BOLD_CYAN),
+            (f"  {ts}", "dim"),
+            (f"  {elapsed:.1f}s", "dim"),
+        )
+    )
 
     panel = Panel(
         Markdown(content),
@@ -209,7 +213,7 @@ async def handle_command(cmd: str, runtime: AgentRuntime, console: Console) -> b
     if command in ("/quit", "/exit"):
         _system_message("Goodbye!", _STYLE_DIM, console)
         return True
-    elif command == "/new":
+    if command == "/new":
         result = runtime.new_session()
         _system_message(result, _STYLE_SUCCESS, console)
     elif command == "/undo":

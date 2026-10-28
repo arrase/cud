@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import cud.config.scaffold as scaffold
+from cud.config import scaffold
 from cud.config.paths import agent_home
 from cud.config.scaffold import _init_history_db, create_agent, delete_agent, list_agents
 
@@ -21,9 +21,7 @@ def test_create_agent_default() -> None:
     assert (target / "workspace" / "skills" / "create-task" / "SKILL.md").is_file()
 
     with sqlite3.connect(target / "history.db") as conn:
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='cud_meta'"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cud_meta'")
         assert cursor.fetchone() is not None
     conn.close()
 

@@ -100,9 +100,7 @@ class AgentDetailView(QWidget):
         self.back_btn.clicked.connect(self.back_to_inventory.emit)
 
         self.title_label = QLabel("Agent Administration")
-        self.title_label.setStyleSheet(
-            "font-size: 19px; font-weight: bold; color: #FFFFFF; padding-left: 4px;"
-        )
+        self.title_label.setStyleSheet("font-size: 19px; font-weight: bold; color: #FFFFFF; padding-left: 4px;")
 
         header.addWidget(self.back_btn)
         header.addWidget(self.title_label, 1)
@@ -204,12 +202,12 @@ class AgentDetailView(QWidget):
         self.tab_subagents = SubagentsTab()
 
         # Add widgets in same index order as categories list
-        self.content_stack.addWidget(self.tab_settings)   # Index 0
-        self.content_stack.addWidget(self.tab_prompt)     # Index 1
-        self.content_stack.addWidget(self.tab_memory)     # Index 2
-        self.content_stack.addWidget(self.tab_skills)     # Index 3
-        self.content_stack.addWidget(self.tab_tasks)      # Index 4
-        self.content_stack.addWidget(self.tab_mcp)        # Index 5
+        self.content_stack.addWidget(self.tab_settings)  # Index 0
+        self.content_stack.addWidget(self.tab_prompt)  # Index 1
+        self.content_stack.addWidget(self.tab_memory)  # Index 2
+        self.content_stack.addWidget(self.tab_skills)  # Index 3
+        self.content_stack.addWidget(self.tab_tasks)  # Index 4
+        self.content_stack.addWidget(self.tab_mcp)  # Index 5
         self.content_stack.addWidget(self.tab_subagents)  # Index 6
 
         self.body_layout.addWidget(self.nav_list)
@@ -265,9 +263,7 @@ class AgentDetailView(QWidget):
         dialog = QProgressDialog(label_text, "", 0, 0, self)
         dialog.setWindowTitle("Working...")
         dialog.setCancelButton(None)
-        dialog.setWindowFlags(
-            Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint
-        )
+        dialog.setWindowFlags(Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint)
         dialog.setWindowModality(Qt.WindowModality.WindowModal)
         dialog.setMinimumDuration(0)
         dialog.setValue(0)
@@ -343,7 +339,7 @@ class AgentDetailView(QWidget):
         last_error: OSError | None = None
         for cmd in commands:
             try:
-                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
                 return
             except OSError as exc:
                 last_error = exc
@@ -429,7 +425,8 @@ class AgentDetailView(QWidget):
                     self,
                     "Partially Saved",
                     "These directories were left untouched because their names are not "
-                    "valid directory names:\n\n  " + "\n  ".join(skipped)
+                    "valid directory names:\n\n  "
+                    + "\n  ".join(skipped)
                     + "\n\nEverything else was saved. Rename them in the agent directory.",
                 )
 
@@ -448,9 +445,7 @@ class AgentDetailView(QWidget):
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(
-            self,
-            "Saved Successfully",
-            f"Agent '{self.agent_name}' has been successfully saved and restarted."
+            self, "Saved Successfully", f"Agent '{self.agent_name}' has been successfully saved and restarted."
         )
 
     def _on_save_restart_error(self, action: str, service_name: str, error_message: str) -> None:
@@ -459,5 +454,5 @@ class AgentDetailView(QWidget):
         QMessageBox.critical(
             self,
             "Service Error",
-            f"Files were saved, but an error occurred while restarting the agent:\n\n{error_message}"
+            f"Files were saved, but an error occurred while restarting the agent:\n\n{error_message}",
         )

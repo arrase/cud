@@ -125,11 +125,7 @@ class AgentItemDelegate(QStyledItemDelegate):
         painter.setPen(QColor("#8A8A8F"))
 
         home_prefix = str(HOME_PATH)
-        display_path = (
-            f"~{home_path.removeprefix(home_prefix)}"
-            if home_path.startswith(home_prefix)
-            else home_path
-        )
+        display_path = f"~{home_path.removeprefix(home_prefix)}" if home_path.startswith(home_prefix) else home_path
         painter.drawText(int(text_x), int(sub_y), f"{display_path}  •  Status: {status}")
 
         painter.restore()
@@ -210,9 +206,7 @@ class InventoryView(QWidget):
 
             # Async Status Query via QThreadPool
             worker = SystemdWorker("status", agent_name)
-            worker.signals.status_checked.connect(
-                partial(self._on_status_checked, generation)
-            )
+            worker.signals.status_checked.connect(partial(self._on_status_checked, generation))
             worker.signals.error.connect(partial(self._on_status_error, generation))
             worker.signals.finished.connect(partial(self._finish_worker, worker))
             worker.signals.error.connect(partial(self._finish_worker, worker))
@@ -243,11 +237,7 @@ class InventoryView(QWidget):
         self._set_status(agent_name, "failed")
 
     def on_create_agent_clicked(self) -> None:
-        name, ok = QInputDialog.getText(
-            self,
-            "Create Agent",
-            "New agent name (only alphanumeric and '.', '_', '-'):"
-        )
+        name, ok = QInputDialog.getText(self, "Create Agent", "New agent name (only alphanumeric and '.', '_', '-'):")
         if not ok or not name.strip():
             return
 
@@ -256,9 +246,7 @@ class InventoryView(QWidget):
             validate_agent_name(name)
             create_agent(name)
             QMessageBox.information(
-                self,
-                "Success",
-                f"Agent '{name}' has been successfully created with the default template."
+                self, "Success", f"Agent '{name}' has been successfully created with the default template."
             )
             self.reload_agents()
         except ValueError as e:

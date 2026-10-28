@@ -88,11 +88,7 @@ def create_readonly_table(headers: list[str], stretch_column: int = -1) -> QTabl
     table.verticalHeader().setVisible(False)
     header = table.horizontalHeader()
     for col in range(len(headers)):
-        mode = (
-            QHeaderView.ResizeMode.Stretch
-            if col == stretch_column
-            else QHeaderView.ResizeMode.ResizeToContents
-        )
+        mode = QHeaderView.ResizeMode.Stretch if col == stretch_column else QHeaderView.ResizeMode.ResizeToContents
         header.setSectionResizeMode(col, mode)
     table.setAlternatingRowColors(True)
     table.setStyleSheet(TABLE_STYLE)

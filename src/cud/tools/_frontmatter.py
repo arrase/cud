@@ -9,9 +9,7 @@ import yaml
 
 # The trailing newline after the closing '---' is optional so a file that ends
 # exactly at the delimiter is still recognised as having frontmatter.
-_FRONTMATTER_RE = re.compile(
-    r"\A---[ \t]*\r?\n(.*?\r?\n)?---[ \t]*(?:\r?\n|\Z)", re.MULTILINE | re.DOTALL
-)
+_FRONTMATTER_RE = re.compile(r"\A---[ \t]*\r?\n(.*?\r?\n)?---[ \t]*(?:\r?\n|\Z)", re.MULTILINE | re.DOTALL)
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
@@ -30,7 +28,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
             metadata = {}
     except yaml.YAMLError:
         metadata = {}
-    return metadata, text[match.end():]
+    return metadata, text[match.end() :]
 
 
 def render_frontmatter(metadata: dict[str, Any], body: str) -> str:

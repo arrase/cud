@@ -37,4 +37,3 @@ __all__ = [
     "validate_safe_name",
     "validate_settings",
 ]
-

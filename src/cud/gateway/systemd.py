@@ -106,17 +106,20 @@ def systemd_available() -> bool:
 
 
 def systemctl_user(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["systemctl", "--user", *args], check=False, text=True, capture_output=True, timeout=_SYSTEMD_TIMEOUT
-    )
-
-
-def journalctl_user(agent: str, lines: int = 50) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["journalctl", "--user", "-u", service_name(agent), "-n", str(lines), "--no-pager"],
+    return subprocess.run(  # noqa: S603
+        ["systemctl", "--user", *args],  # noqa: S607
         check=False,
         text=True,
         capture_output=True,
         timeout=_SYSTEMD_TIMEOUT,
     )
 
+
+def journalctl_user(agent: str, lines: int = 50) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603
+        ["journalctl", "--user", "-u", service_name(agent), "-n", str(lines), "--no-pager"],  # noqa: S607
+        check=False,
+        text=True,
+        capture_output=True,
+        timeout=_SYSTEMD_TIMEOUT,
+    )

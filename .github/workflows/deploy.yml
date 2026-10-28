@@ -3,18 +3,13 @@ name: Deploy MkDocs to GitHub Pages
 on:
   push:
     branches:
-      - master
       - main
     paths:
       - 'gh-pages/**'
       - 'mkdocs.yml'
       - '.github/workflows/deploy.yml'
-  workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 
 concurrency:
   group: "pages"
@@ -26,15 +21,18 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.x"
 
@@ -42,17 +40,15 @@ jobs:
         run: |
           pip install --only-binary :all: mkdocs-material==9.7.7
 
-
       - name: Build documentation
         run: |
           mkdocs build
-          touch ./site/.nojekyll
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: ./site
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

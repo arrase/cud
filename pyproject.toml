@@ -79,13 +79,25 @@ target-version = "py311"
 line-length = 120
 
 [tool.ruff.lint]
-# E/W/F: pycodestyle + pyflakes.  B: bugbear (loop-variable capture, bare
-# excepts).  I: import order.  UP: pyupgrade for the declared 3.11 floor.
-select = ["E", "F", "W", "B", "I", "UP", "C4", "RUF"]
+select = [
+  "E", "W", "F", "I", "N", "A", "B", "C4", "S", "UP", "SIM", "RUF", "PTH", "PIE",
+  "RET", "PERF", "ASYNC", "LOG", "G", "T20", "PL",
+]
 ignore = [
   # RUF001: the UI deliberately uses emoji and typographic glyphs (➕, ❯, …).
   "RUF001",
+  # Design-metric rules: thresholds are arbitrary and would force artificial splits.
+  "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004",
+  # Module-level runtime state is intentional.
+  "PLW0603",
+  # Cheap path metadata calls (resolve/exists) in async handlers are not worth offloading to threads.
+  "ASYNC240",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+# Qt method overrides use camelCase (e.g. sizeHint).
+"src/cud/gui/**" = ["N802"]
 
 [tool.mypy]
 python_version = "3.11"

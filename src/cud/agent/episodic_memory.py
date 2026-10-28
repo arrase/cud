@@ -104,7 +104,7 @@ def load_past_user_prompts(db_path: Path) -> list[str]:
 
     prompts: list[str] = []
     with connect_history(db_path) as conn:
-        prompts = _extract_user_prompts(conn.cursor())
+        prompts.extend(_extract_user_prompts(conn.cursor()))
     return prompts
 
 
@@ -128,13 +128,12 @@ def _read_history_messages(cursor: sqlite3.Cursor, exclude_thread_id: str) -> de
     thread_messages: defaultdict[str, list[Any]] = defaultdict(list)
     seen: defaultdict[str, set[str]] = defaultdict(set)
     cursor.execute(
-        "SELECT thread_id, type, value FROM writes "
-        "WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
+        "SELECT thread_id, type, value FROM writes WHERE channel = 'messages' AND thread_id != ? ORDER BY rowid ASC",
         (exclude_thread_id,),
     )
     for tid, typ, val in cursor.fetchall():
         msgs = _serializer.loads_typed((typ, val))
-        for msg in (msgs if isinstance(msgs, list) else [msgs]):
+        for msg in msgs if isinstance(msgs, list) else [msgs]:
             # A checkpoint may rewrite the full list rather than a delta, so
             # the same message id can appear in several rows.
             raw_id = msg.get("id") if isinstance(msg, dict) else getattr(msg, "id", None)
@@ -262,8 +261,7 @@ def format_past_conversations_context(results: list[dict[str, Any]]) -> str:
             f" - [Date: {item['formatted_date']}]"
             f" - [Total messages: {item['total_messages']}]"
         )
-        for snippet in item["snippets"]:
-            lines.append("  " + "\n  ".join(snippet.splitlines()))
+        lines.extend("  " + "\n  ".join(snippet.splitlines()) for snippet in item["snippets"])
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -310,4 +308,5 @@ def create_search_past_conversations_tool(
         except HistoryError as exc:
             return f"Error searching past conversations: {exc}"
         return format_past_conversations_context(results)
+
     return search_past_conversations

@@ -126,4 +126,3 @@ def cmd_agent_memory(args: argparse.Namespace) -> int:
 
     console.print(read_agent_memory(directory))
     return 0
-

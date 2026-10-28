@@ -237,9 +237,7 @@ class TasksTab(QWidget):
 
     def _on_add_clicked(self) -> None:
         """Add a new empty task entry."""
-        name, ok = QInputDialog.getText(
-            self, "Create Task", "New task name (used as directory name):"
-        )
+        name, ok = QInputDialog.getText(self, "Create Task", "New task name (used as directory name):")
         if not ok or not name.strip():
             return
 
@@ -259,16 +257,18 @@ class TasksTab(QWidget):
         # Re-creating a previously deleted name: drop the pending deletion.
         self._deleted_dirs.discard(dir_name)
 
-        self._tasks_data.append({
-            "name": name,
-            "description": "",
-            "schedule": "0 * * * *",
-            "channel_id": None,
-            "user_id": None,
-            "enabled": True,
-            "prompt": "Describe what the agent should do...",
-            "dir_name": dir_name,
-        })
+        self._tasks_data.append(
+            {
+                "name": name,
+                "description": "",
+                "schedule": "0 * * * *",
+                "channel_id": None,
+                "user_id": None,
+                "enabled": True,
+                "prompt": "Describe what the agent should do...",
+                "dir_name": dir_name,
+            }
+        )
         self._refresh_table()
         self.table.selectRow(len(self._tasks_data) - 1)
 
@@ -307,9 +307,7 @@ class TasksTab(QWidget):
             return
 
         if not is_valid_schedule(schedule):
-            QMessageBox.critical(
-                self, "Invalid Cron", f"The cron expression is not valid: {schedule!r}"
-            )
+            QMessageBox.critical(self, "Invalid Cron", f"The cron expression is not valid: {schedule!r}")
             return
 
         # Parse optional integer fields; a typo must not silently retarget the task
@@ -333,5 +331,3 @@ class TasksTab(QWidget):
         self._refresh_table()
         self.table.selectRow(saved_row)
         QMessageBox.information(self, "Data Updated", f"Task '{name}' updated in memory.")
-
-

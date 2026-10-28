@@ -153,4 +153,3 @@ def save_tasks(
         write_task_entry(tasks_dir, entry)
     remove_deleted_tasks(tasks_dir, deleted_dirs, live_dirs)
     return skipped
-

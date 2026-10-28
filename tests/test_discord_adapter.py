@@ -315,9 +315,11 @@ async def test_run_success_lifecycle(agent_dir: Path) -> None:
 
     def fake_command(**kw):
         name = kw.get("name", "cmd")
+
         def decorator(f):
             registered_commands[name] = f
             return f
+
         return decorator
 
     def fake_create_task(coro, **kw):
@@ -333,8 +335,10 @@ async def test_run_success_lifecycle(agent_dir: Path) -> None:
     mock_bot.loop.create_task = fake_create_task
 
     gw.aclose_sessions = AsyncMock()
-    with patch("cud.gateway.discord_adapter.commands.Bot", return_value=mock_bot), \
-         patch("cud.gateway.discord_adapter.app_commands.Group.command", side_effect=fake_command):
+    with (
+        patch("cud.gateway.discord_adapter.commands.Bot", return_value=mock_bot),
+        patch("cud.gateway.discord_adapter.app_commands.Group.command", side_effect=fake_command),
+    ):
         await gw.run()
 
     mock_bot.start.assert_awaited_once_with("fake-token")

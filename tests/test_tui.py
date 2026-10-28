@@ -107,13 +107,17 @@ async def test_handle_command_memory() -> None:
     runtime.search_past_conversations.assert_called_with("docker", 5)
 
     # memory search with results
-    runtime.search_past_conversations = MagicMock(return_value=[{
-        "thread_id": "thread-12345678",
-        "formatted_date": "2026-08-20 10:00 UTC",
-        "score": 3,
-        "snippets": ["[User]: How to dockerize FastAPI?"],
-        "total_messages": 2,
-    }])
+    runtime.search_past_conversations = MagicMock(
+        return_value=[
+            {
+                "thread_id": "thread-12345678",
+                "formatted_date": "2026-08-20 10:00 UTC",
+                "score": 3,
+                "snippets": ["[User]: How to dockerize FastAPI?"],
+                "total_messages": 2,
+            }
+        ]
+    )
     assert await handle_command("/memory search fastapi", runtime, console) is False
     assert "thread-1" in output.getvalue()
     assert "2026-08-20" in output.getvalue()
@@ -179,10 +183,11 @@ async def test_run_tui_prompt_loop(agent_dir: Path) -> None:
         except StopIteration:
             raise EOFError() from None
 
-    with patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance), \
-         patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async), \
-         patch("cud.tui.app.handle_command", AsyncMock(return_value=False)):
-
+    with (
+        patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance),
+        patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async),
+        patch("cud.tui.app.handle_command", AsyncMock(return_value=False)),
+    ):
         code = await run_tui("test-agent", thread_id="th-fixed")
         assert code == 0
         assert mock_runtime_instance.invoke.await_count == 2
@@ -198,9 +203,10 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
     async def fake_prompt_async(prompt_msg):
         return "/quit"
 
-    with patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance), \
-         patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async):
-
+    with (
+        patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance),
+        patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async),
+    ):
         code = await run_tui("test-agent")
         assert code == 0
 
@@ -254,9 +260,11 @@ async def test_run_tui_survives_unreadable_history(agent_dir: Path) -> None:
 
 @pytest.mark.anyio
 async def test_run_tui_does_not_block_on_history_load(agent_dir: Path) -> None:
-    with patch("cud.tui.app.PromptSession") as session_cls, \
-         patch.object(AgentRuntime, "load_past_prompts", return_value=["a", "b"]), \
-         patch("cud.tui.app.asyncio.to_thread", wraps=asyncio.to_thread) as to_thread:
+    with (
+        patch("cud.tui.app.PromptSession") as session_cls,
+        patch.object(AgentRuntime, "load_past_prompts", return_value=["a", "b"]),
+        patch("cud.tui.app.asyncio.to_thread", wraps=asyncio.to_thread) as to_thread,
+    ):
         session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
         assert await run_tui("test-agent") == 0
     assert to_thread.call_count >= 1
