@@ -31,10 +31,11 @@ async def test_runtime_reload_and_build_graph(agent_dir: Path) -> None:
     fake_saver.__aenter__.return_value = fake_saver
     fake_saver.__aexit__.return_value = None
 
-    with patch("cud.agent.runtime.create_deep_agent") as mock_create, \
-         patch("cud.agent.runtime.load_mcp_tools_managed", AsyncMock(return_value=[])), \
-         patch("cud.agent.runtime.AsyncSqliteSaver.from_conn_string", return_value=fake_saver):
-
+    with (
+        patch("cud.agent.runtime.create_deep_agent") as mock_create,
+        patch("cud.agent.runtime.load_mcp_tools_managed", AsyncMock(return_value=[])),
+        patch("cud.agent.runtime.AsyncSqliteSaver.from_conn_string", return_value=fake_saver),
+    ):
         mock_agent_instance = MagicMock()
         mock_create.return_value = mock_agent_instance
 
@@ -137,7 +138,7 @@ async def test_undo_actually_removes_messages_from_state(agent_dir: Path) -> Non
     naive = add_messages(messages, kept)
     assert len(naive) == len(messages), "naive approach must be a no-op"
 
-    removals = [RemoveMessage(id=m.id) for m in messages[len(kept):]]
+    removals = [RemoveMessage(id=m.id) for m in messages[len(kept) :]]
     assert len(add_messages(messages, removals)) == 2
 
 
@@ -237,15 +238,19 @@ async def test_reload_failure_keeps_previous_graph(agent_dir: Path) -> None:
     good = MagicMock()
     runtime.graph = good
 
-    with patch("cud.agent.runtime.load_settings", side_effect=ValueError("broken yaml")):
-        with pytest.raises(ValueError, match="broken yaml"):
-            await runtime.reload()
+    with (
+        patch("cud.agent.runtime.load_settings", side_effect=ValueError("broken yaml")),
+        pytest.raises(ValueError, match="broken yaml"),
+    ):
+        await runtime.reload()
 
     assert runtime.graph is good, "a failed reload must not drop the live graph"
 
-    with patch.object(AgentRuntime, "_build_graph", AsyncMock(side_effect=RuntimeError("build failed"))):
-        with pytest.raises(RuntimeError, match="build failed"):
-            await runtime.reload()
+    with (
+        patch.object(AgentRuntime, "_build_graph", AsyncMock(side_effect=RuntimeError("build failed"))),
+        pytest.raises(RuntimeError, match="build failed"),
+    ):
+        await runtime.reload()
     assert runtime.graph is good
 
 
@@ -286,10 +291,11 @@ async def test_reload_keeps_sqlite_checkpointer_open(agent_dir: Path) -> None:
         captured_saver = kwargs["checkpointer"]
         return MagicMock()
 
-    with patch("cud.agent.runtime.create_deep_agent", side_effect=capture_agent), \
-         patch("cud.agent.runtime.load_mcp_tools_managed", AsyncMock(return_value=[])):
+    with (
+        patch("cud.agent.runtime.create_deep_agent", side_effect=capture_agent),
+        patch("cud.agent.runtime.load_mcp_tools_managed", AsyncMock(return_value=[])),
+    ):
         await runtime.reload()
         assert captured_saver is not None
         await captured_saver.setup()
         await runtime.aclose()
-

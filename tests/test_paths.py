@@ -61,9 +61,7 @@ def test_validate_agent_name_valid(name: str) -> None:
 )
 def test_validate_agent_name_invalid(name: str) -> None:
     assert is_safe_name(name) is False
-    with pytest.raises(
-        ValueError, match="agent name must start with an alphanumeric character"
-    ):
+    with pytest.raises(ValueError, match="agent name must start with an alphanumeric character"):
         validate_agent_name(name)
 
 

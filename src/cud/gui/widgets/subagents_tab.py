@@ -203,10 +203,12 @@ class SubagentsTab(QWidget):
             new_name = f"new-subagent-{idx}"
             idx += 1
 
-        self._subagents.append(SubAgentSettings(
-            name=new_name,
-            description="New subagent",
-        ))
+        self._subagents.append(
+            SubAgentSettings(
+                name=new_name,
+                description="New subagent",
+            )
+        )
         self._refresh_list()
         self.subagent_list.setCurrentRow(len(self._subagents) - 1)
 

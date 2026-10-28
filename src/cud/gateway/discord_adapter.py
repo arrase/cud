@@ -69,9 +69,7 @@ class DiscordGateway:
         """Reload config and every live session; one failure must not abort the rest."""
         self.settings = load_settings(self.agent_dir)
         # Snapshot both before awaiting: the dict can change while we reload.
-        runtimes = [
-            (tid, rt) for tid, rt in self.sessions.items() if tid != exclude_thread_id
-        ]
+        runtimes = [(tid, rt) for tid, rt in self.sessions.items() if tid != exclude_thread_id]
         results = await asyncio.gather(*(rt.reload() for _, rt in runtimes), return_exceptions=True)
         for (thread_id, _), exc in zip(runtimes, results, strict=True):
             if exc is not None:
@@ -87,9 +85,8 @@ class DiscordGateway:
             runtime = self.session(thread_id)
             # Serialize per thread: concurrent messages in one channel would
             # race on the same LangGraph checkpoint version.
-            async with self._thread_lock(thread_id):
-                async with message.channel.typing():
-                    response = await runtime.invoke(message.content)
+            async with self._thread_lock(thread_id), message.channel.typing():
+                response = await runtime.invoke(message.content)
 
             content = response.content
             chunks = split_message(content)

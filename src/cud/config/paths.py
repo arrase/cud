@@ -28,8 +28,7 @@ def validate_safe_name(name: str, label: str = "name") -> str:
     # are interpolated into systemd unit files, which are line-oriented.
     if not is_safe_name(name):
         raise ValueError(
-            f"{label} must start with an alphanumeric character and contain "
-            "only letters, numbers, '.', '_' or '-'"
+            f"{label} must start with an alphanumeric character and contain only letters, numbers, '.', '_' or '-'"
         )
     return name
 
@@ -47,4 +46,3 @@ def existing_agent_home(name: str) -> Path:
     if not path.is_dir():
         raise FileNotFoundError(f"Agent '{name}' does not exist: {path}")
     return path
-

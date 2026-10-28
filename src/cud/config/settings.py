@@ -111,30 +111,22 @@ def _coerce(owner: str, name: str, value: Any) -> Any:
         return 0
     if key in _NUMERIC_FIELDS:
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(
-                f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}"
-            )
+            raise ValueError(f"settings field '{owner}.{name}' must be a number, got {type(value).__name__}")
         if key == ("ModelSettings", "temperature"):
             return float(value)
         if not isinstance(value, int):
-            raise ValueError(
-                f"settings field '{owner}.{name}' must be an integer, got {type(value).__name__}"
-            )
+            raise ValueError(f"settings field '{owner}.{name}' must be an integer, got {type(value).__name__}")
         return value
     if name in ("skills_paths", "args"):
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             raise ValueError(f"settings field '{owner}.{name}' must be a list of strings")
         return list(value)
     if name == "env":
-        if not isinstance(value, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in value.items()
-        ):
+        if not isinstance(value, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in value.items()):
             raise ValueError(f"settings field '{owner}.{name}' must be a string mapping")
         return dict(value)
     if not isinstance(value, str):
-        raise ValueError(
-            f"settings field '{owner}.{name}' must be a string, got {type(value).__name__}"
-        )
+        raise ValueError(f"settings field '{owner}.{name}' must be a string, got {type(value).__name__}")
     return value
 
 
@@ -151,9 +143,7 @@ def _subagents_from_list(raw: Any) -> list[SubAgentSettings]:
         if mcp_raw is not None and not isinstance(mcp_raw, list):
             raise ValueError(f"'mcp_servers' must be a list, got {type(mcp_raw).__name__}")
         mcp_servers = [_dataclass_from_dict(SubAgentMCPServer, m) for m in (mcp_raw or [])]
-        sa = _dataclass_from_dict(
-            SubAgentSettings, {k: v for k, v in item.items() if k != "mcp_servers"}
-        )
+        sa = _dataclass_from_dict(SubAgentSettings, {k: v for k, v in item.items() if k != "mcp_servers"})
         sa.mcp_servers = mcp_servers
         subagents.append(sa)
     return subagents
@@ -168,8 +158,7 @@ def format_subagent_mcp_server(srv: SubAgentMCPServer) -> str:
     line = shlex.join([srv.name, srv.command, *srv.args])
     if srv.env:
         encoded = ",".join(
-            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}"
-            for k, v in srv.env.items()
+            f"{urllib.parse.quote(k, safe='')}={urllib.parse.quote(v, safe='')}" for k, v in srv.env.items()
         )
         line = f"{line} {ENV_MARKER}[{encoded}]"
     return line
@@ -183,14 +172,14 @@ def parse_subagent_mcp_servers(text: str) -> list[SubAgentMCPServer]:
     containing spaces, commas or ``=`` survive the round trip.
     """
     servers: list[SubAgentMCPServer] = []
-    for line in text.strip().splitlines():
-        line = line.strip()
+    for raw_line in text.strip().splitlines():
+        line = raw_line.strip()
         if not line:
             continue
         env: dict[str, str] = {}
         if line.endswith("]") and ENV_MARKER in line:
-            line, _, env_blob = line.rpartition(ENV_MARKER)
-            line = line.rstrip()
+            head, _, env_blob = line.rpartition(ENV_MARKER)
+            line = head.rstrip()
             for pair in env_blob.strip().lstrip("[").rstrip("]").split(","):
                 key, sep, value = pair.partition("=")
                 if sep:
@@ -291,14 +280,11 @@ def validate_settings(settings: Settings) -> None:
             or not isinstance(sa.model, str)
         ):
             raise ValueError(f"subagent '{sa.name}': string fields must be strings")
-        if not isinstance(sa.skills_paths, list) or not all(
-            isinstance(p, str) for p in sa.skills_paths
-        ):
+        if not isinstance(sa.skills_paths, list) or not all(isinstance(p, str) for p in sa.skills_paths):
             raise ValueError(f"subagent '{sa.name}': skills_paths must be a list of strings")
         if isinstance(sa.context_window, bool) or not isinstance(sa.context_window, int):
             raise ValueError(
-                f"subagent '{sa.name}': context_window must be an integer, "
-                f"got {type(sa.context_window).__name__}"
+                f"subagent '{sa.name}': context_window must be an integer, got {type(sa.context_window).__name__}"
             )
         if sa.context_window < 0:
             raise ValueError(f"subagent '{sa.name}': context_window must not be negative")

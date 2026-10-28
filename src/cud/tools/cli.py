@@ -160,7 +160,7 @@ def _install_remote(url: str, skills_dir: Path) -> int:
         console.print(f"[red]Skill already exists: {target}[/red]")
         return 2
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
+        with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310
             payload = response.read(_MAX_SKILL_BYTES + 1)
     except (urllib.error.URLError, TimeoutError) as exc:
         console.print(f"[red]Failed to download skill:[/red] {exc}")

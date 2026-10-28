@@ -88,8 +88,7 @@ async def test_resolve_target_channel(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=999, user_id=None,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=999, user_id=None, enabled=True, path=Path("/t"), prompt="p"
     )
     target = await scheduler._resolve_target(task)
     assert target is channel_mock
@@ -106,8 +105,7 @@ async def test_resolve_target_channel_cache_miss_fetches(tmp_path: Path) -> None
     scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=999, user_id=None,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=999, user_id=None, enabled=True, path=Path("/t"), prompt="p"
     )
     assert await scheduler._resolve_target(task) is channel_mock
     bot.fetch_channel.assert_awaited_once_with(999)
@@ -122,8 +120,7 @@ async def test_resolve_target_rejects_non_messageable_channel(tmp_path: Path) ->
     scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=999, user_id=None,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=999, user_id=None, enabled=True, path=Path("/t"), prompt="p"
     )
     assert await scheduler._resolve_target(task) is None
 
@@ -139,8 +136,7 @@ async def test_resolve_target_user(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=999, user_id=888,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=999, user_id=888, enabled=True, path=Path("/t"), prompt="p"
     )
     target = await scheduler._resolve_target(task)
     assert target is user_mock
@@ -155,8 +151,7 @@ async def test_resolve_target_user_exception(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path, lambda: bot)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=None, user_id=888,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=None, user_id=888, enabled=True, path=Path("/t"), prompt="p"
     )
     target = await scheduler._resolve_target(task)
     assert target is None
@@ -166,8 +161,7 @@ async def test_resolve_target_user_exception(tmp_path: Path) -> None:
 async def test_resolve_target_none(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=None, user_id=None,
-        enabled=True, path=Path("/t"), prompt="p"
+        name="t", description="", schedule="*", channel_id=None, user_id=None, enabled=True, path=Path("/t"), prompt="p"
     )
     target = await scheduler._resolve_target(task)
     assert target is None
@@ -188,8 +182,14 @@ async def test_execute_success(tmp_path: Path) -> None:
     scheduler._resolve_target = AsyncMock(return_value=target_mock)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=1, user_id=None,
-        enabled=True, path=Path("/t"), prompt="do it"
+        name="t",
+        description="",
+        schedule="*",
+        channel_id=1,
+        user_id=None,
+        enabled=True,
+        path=Path("/t"),
+        prompt="do it",
     )
     with patch("cud.gateway.scheduler.AgentRuntime", return_value=runtime_mock) as mock_cls:
         await scheduler._execute(task)
@@ -208,8 +208,14 @@ async def test_execute_no_target_skips_run(tmp_path: Path) -> None:
     scheduler._resolve_target = AsyncMock(return_value=None)
 
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=None, user_id=None,
-        enabled=True, path=Path("/t"), prompt="do it"
+        name="t",
+        description="",
+        schedule="*",
+        channel_id=None,
+        user_id=None,
+        enabled=True,
+        path=Path("/t"),
+        prompt="do it",
     )
     with patch("cud.gateway.scheduler.AgentRuntime") as mock_cls:
         await scheduler._execute(task)
@@ -226,8 +232,14 @@ async def test_execute_invoke_exception(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path)
     scheduler._resolve_target = AsyncMock(return_value=MagicMock(send=AsyncMock()))
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=1, user_id=None,
-        enabled=True, path=Path("/t"), prompt="do it"
+        name="t",
+        description="",
+        schedule="*",
+        channel_id=1,
+        user_id=None,
+        enabled=True,
+        path=Path("/t"),
+        prompt="do it",
     )
     with patch("cud.gateway.scheduler.AgentRuntime", return_value=runtime_mock):
         await scheduler._execute(task)
@@ -262,8 +274,14 @@ async def test_run_no_tasks_then_reload(tmp_path: Path) -> None:
 async def test_run_timeout_executes_task(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=1, user_id=None,
-        enabled=True, path=Path("/t"), prompt="do it"
+        name="t",
+        description="",
+        schedule="*",
+        channel_id=1,
+        user_id=None,
+        enabled=True,
+        path=Path("/t"),
+        prompt="do it",
     )
     scheduler._load_tasks = MagicMock(return_value=[task])
     scheduler._execute = AsyncMock()
@@ -277,9 +295,11 @@ async def test_run_timeout_executes_task(tmp_path: Path) -> None:
             return task, 0.001
         raise asyncio.CancelledError()
 
-    with patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled):
-        with pytest.raises(asyncio.CancelledError):
-            await scheduler.run()
+    with (
+        patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await scheduler.run()
 
     scheduler._execute.assert_awaited_once_with(task)
 
@@ -288,8 +308,14 @@ async def test_run_timeout_executes_task(tmp_path: Path) -> None:
 async def test_run_reload_before_timeout(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path)
     task = TaskCard(
-        name="t", description="", schedule="*", channel_id=1, user_id=None,
-        enabled=True, path=Path("/t"), prompt="do it"
+        name="t",
+        description="",
+        schedule="*",
+        channel_id=1,
+        user_id=None,
+        enabled=True,
+        path=Path("/t"),
+        prompt="do it",
     )
     scheduler._load_tasks = MagicMock(return_value=[task])
     scheduler._execute = AsyncMock()
@@ -304,9 +330,11 @@ async def test_run_reload_before_timeout(tmp_path: Path) -> None:
             return task, 100.0
         raise asyncio.CancelledError()
 
-    with patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled):
-        with pytest.raises(asyncio.CancelledError):
-            await scheduler.run()
+    with (
+        patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await scheduler.run()
 
     scheduler._execute.assert_not_called()
 
@@ -316,8 +344,10 @@ async def test_run_loop_exception_retry(tmp_path: Path) -> None:
     scheduler = TaskScheduler(tmp_path)
     scheduler._load_tasks = MagicMock(side_effect=[[], asyncio.CancelledError()])
 
-    with patch("cud.gateway.scheduler._next_scheduled", side_effect=RuntimeError("unexpected")):
-        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
-            with pytest.raises(asyncio.CancelledError):
-                await scheduler.run()
-            mock_sleep.assert_awaited_once_with(30)
+    with (
+        patch("cud.gateway.scheduler._next_scheduled", side_effect=RuntimeError("unexpected")),
+        patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await scheduler.run()
+    mock_sleep.assert_awaited_once_with(30)

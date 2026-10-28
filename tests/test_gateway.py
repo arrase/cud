@@ -13,9 +13,11 @@ from cud.gateway.systemd import (
     control_service,
     get_service_status,
     install_unit,
+    journalctl_user,
     remove_unit,
     render_unit,
     service_name,
+    systemctl_user,
     uninstall_unit,
     unit_path,
 )
@@ -85,12 +87,8 @@ def test_render_unit() -> None:
     assert "cud gateway run my-agent" in unit
 
 
-def test_install_and_remove_unit(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.setattr(
-        "cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service"
-    )
+def test_install_and_remove_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service")
     installed = install_unit("my-agent")
     assert installed.is_file()
     assert "my-agent" in installed.read_text(encoding="utf-8")
@@ -101,13 +99,9 @@ def test_install_and_remove_unit(
 
 
 def test_uninstall_unit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        "cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service"
-    )
+    monkeypatch.setattr("cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service")
     install_unit("my-agent")
-    mock_systemctl = MagicMock(
-        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-    )
+    mock_systemctl = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr=""))
     monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: True)
     monkeypatch.setattr("cud.gateway.systemd.systemctl_user", mock_systemctl)
 
@@ -163,13 +157,9 @@ def test_control_service(monkeypatch: pytest.MonkeyPatch) -> None:
         control_service("my-agent", "stop")
 
 
-def test_cmd_gateway_start_no_systemd(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_cmd_gateway_start_no_systemd(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     agent_home("my-agent").mkdir(parents=True)
-    monkeypatch.setattr(
-        "cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service"
-    )
+    monkeypatch.setattr("cud.gateway.systemd.unit_path", lambda agent: tmp_path / f"cud-{agent}.service")
     monkeypatch.setattr("cud.gateway.systemd.systemd_available", lambda: False)
     args = argparse.Namespace(agent="my-agent")
     assert cmd_gateway_start(args) == 0
@@ -182,9 +172,7 @@ def test_cmd_gateway_start_nonexistent_agent() -> None:
 
 def test_cmd_gateway_stop(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_systemctl = MagicMock(
-        return_value=subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="stopped", stderr=""
-        )
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="stopped", stderr="")
     )
     monkeypatch.setattr("cud.gateway.systemd.systemctl_user", mock_systemctl)
     args = argparse.Namespace(agent="my-agent")
@@ -193,14 +181,10 @@ def test_cmd_gateway_stop(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cmd_gateway_status(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_systemctl = MagicMock(
-        return_value=subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="active", stderr=""
-        )
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="active", stderr="")
     )
     mock_journalctl = MagicMock(
-        return_value=subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="logs", stderr=""
-        )
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="logs", stderr="")
     )
     monkeypatch.setattr("cud.gateway.systemd.systemctl_user", mock_systemctl)
     monkeypatch.setattr("cud.gateway.systemd.journalctl_user", mock_journalctl)
@@ -228,9 +212,7 @@ def test_run_gateway(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "name", ["../../tmp/evil", "a/../../b", "..", "agent\nExecStartPre=/tmp/x"]
-)
+@pytest.mark.parametrize("name", ["../../tmp/evil", "a/../../b", "..", "agent\nExecStartPre=/tmp/x"])
 def test_systemd_helpers_validate_the_agent_name(name: str) -> None:
     """Regression: the raw name was interpolated into a path that install_unit
     then mkdir'd, so a traversal escaped ~/.config/systemd."""
@@ -291,3 +273,12 @@ def test_start_reports_daemon_reload_failure(
         MagicMock(return_value=MagicMock(returncode=1, stdout="", stderr="bus error")),
     )
     assert cmd_gateway_start(argparse.Namespace(agent="solo")) == 1
+
+
+def test_systemctl_and_journalctl_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    mock_run = MagicMock(return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="ok", stderr=""))
+    monkeypatch.setattr("cud.gateway.systemd.subprocess.run", mock_run)
+
+    assert systemctl_user("status", "cud-gateway-solo.service").stdout == "ok"
+    assert journalctl_user("solo", lines=20).stdout == "ok"
+    assert mock_run.call_count == 2

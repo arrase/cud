@@ -52,8 +52,7 @@ class MCPTab(QWidget):
         create_tab_header(
             self.main_layout,
             "Model Context Protocol (MCP)",
-            "Connect your agent with external tools and data sources via MCP servers "
-            "(Stdio or HTTP SSE).",
+            "Connect your agent with external tools and data sources via MCP servers (Stdio or HTTP SSE).",
         )
 
         # Main horizontal split
@@ -64,9 +63,7 @@ class MCPTab(QWidget):
         self.left_col = QVBoxLayout()
         self.left_col.setSpacing(8)
 
-        self.servers_table = create_readonly_table(
-            ["Name", "Transport", "Destination"], stretch_column=2
-        )
+        self.servers_table = create_readonly_table(["Name", "Transport", "Destination"], stretch_column=2)
         self.servers_table.itemSelectionChanged.connect(self.on_server_selected)
         self.left_col.addWidget(self.servers_table, 1)
 
@@ -339,13 +336,13 @@ class MCPTab(QWidget):
     def save_data(self, agent_dir: Path) -> None:
         """Write current MCPConfig to mcp.json."""
         allowed_str = self.input_allowed.text().strip()
-        self.current_config.allowed_tools = sorted(
-            {t.strip() for t in allowed_str.split(",") if t.strip()}
-        ) if allowed_str else []
+        self.current_config.allowed_tools = (
+            sorted({t.strip() for t in allowed_str.split(",") if t.strip()}) if allowed_str else []
+        )
 
         disabled_str = self.input_disabled.text().strip()
-        self.current_config.disabled_tools = sorted(
-            {t.strip() for t in disabled_str.split(",") if t.strip()}
-        ) if disabled_str else []
+        self.current_config.disabled_tools = (
+            sorted({t.strip() for t in disabled_str.split(",") if t.strip()}) if disabled_str else []
+        )
 
         save_mcp_config(agent_dir, self.current_config)

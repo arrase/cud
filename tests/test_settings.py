@@ -142,9 +142,7 @@ def test_validate_settings_invalid_gateway_provider() -> None:
     settings = Settings()
     settings.gateway.token = "token123"
     settings.gateway.provider = "slack"
-    with pytest.raises(
-        ValueError, match="v1 supports only the discord gateway provider"
-    ):
+    with pytest.raises(ValueError, match="v1 supports only the discord gateway provider"):
         validate_settings(settings)
 
 
@@ -206,9 +204,7 @@ def test_save_settings_is_atomic_and_private(tmp_path: Path) -> None:
     assert not list(tmp_path.glob(".settings.yaml.*")), "temp file must be renamed away"
 
 
-def test_save_settings_does_not_truncate_on_write_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_save_settings_does_not_truncate_on_write_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Regression: a plain write_text truncates the file before writing, so a
     failure mid-write left corrupt YAML on disk."""
     save_settings(tmp_path, Settings())
@@ -226,9 +222,7 @@ def test_save_settings_does_not_truncate_on_write_failure(
     assert not list(tmp_path.glob(".settings.yaml.*")), "temp file must be cleaned up"
 
 
-def test_atomic_write_cleans_up_when_fsync_target_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_atomic_write_cleans_up_when_fsync_target_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "out.txt"
     monkeypatch.setattr(Path, "replace", boom)
     with pytest.raises(OSError):
@@ -265,24 +259,18 @@ def test_save_settings_rejects_bad_subagents(tmp_path: Path) -> None:
 
 
 def test_settings_yaml_without_unknown_keys_still_loads(tmp_path: Path) -> None:
-    (tmp_path / "settings.yaml").write_text(
-        "model:\n  name: qwen\n  future_option: 1\n", encoding="utf-8"
-    )
+    (tmp_path / "settings.yaml").write_text("model:\n  name: qwen\n  future_option: 1\n", encoding="utf-8")
     assert load_settings(tmp_path).model.name == "qwen"
 
 
 def test_load_settings_treats_null_subagent_context_as_inherit(tmp_path: Path) -> None:
     """Regression: `context_window:` must not hard-fail the whole agent."""
-    (tmp_path / "settings.yaml").write_text(
-        "subagents:\n  - name: a\n    context_window:\n", encoding="utf-8"
-    )
+    (tmp_path / "settings.yaml").write_text("subagents:\n  - name: a\n    context_window:\n", encoding="utf-8")
     assert load_settings(tmp_path).subagents[0].context_window == 0
 
 
 def test_load_settings_rejects_non_list_mcp_servers(tmp_path: Path) -> None:
-    (tmp_path / "settings.yaml").write_text(
-        "subagents:\n  - name: a\n    mcp_servers: 5\n", encoding="utf-8"
-    )
+    (tmp_path / "settings.yaml").write_text("subagents:\n  - name: a\n    mcp_servers: 5\n", encoding="utf-8")
     with pytest.raises(ValueError, match="'mcp_servers' must be a list"):
         load_settings(tmp_path)
 
@@ -295,9 +283,7 @@ def test_save_settings_rejects_non_integer_subagent_context(tmp_path: Path) -> N
 
 
 def test_subagent_mcp_server_roundtrip() -> None:
-    srv = SubAgentMCPServer(
-        name="pg", command="npx", args=["-y", "@mcp/pg"], env={"DSN": "a,b=c"}
-    )
+    srv = SubAgentMCPServer(name="pg", command="npx", args=["-y", "@mcp/pg"], env={"DSN": "a,b=c"})
     formatted = format_subagent_mcp_server(srv)
     assert parse_subagent_mcp_servers(formatted) == [srv]
     assert parse_subagent_mcp_servers("onlyname\n'unclosed\n\n") == []

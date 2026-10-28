@@ -192,9 +192,7 @@ def test_unsafe_preexisting_dir_is_skipped_not_fatal(tmp_path: Path) -> None:
 
 def test_env_values_with_special_characters_roundtrip() -> None:
     """Regression: env values containing ',' were silently truncated."""
-    server = SubAgentMCPServer(
-        name="pg", command="npx", args=["-y"], env={"DSN": "a,b c=d", "PLAIN": "x"}
-    )
+    server = SubAgentMCPServer(name="pg", command="npx", args=["-y"], env={"DSN": "a,b c=d", "PLAIN": "x"})
     assert parse_subagent_mcp_servers(format_subagent_mcp_server(server)) == [server]
 
 

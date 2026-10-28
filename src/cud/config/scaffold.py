@@ -50,9 +50,7 @@ def _populate_agent(target: Path, *, template_root: Traversable, overwrite: bool
     _init_history_db(target / "history.db")
 
 
-def _copy_bundled_skills(
-    skills_dir: Path, template_root: Traversable, *, overwrite: bool = False
-) -> None:
+def _copy_bundled_skills(skills_dir: Path, template_root: Traversable, *, overwrite: bool = False) -> None:
     """Copy skill templates shipped with the package into the agent workspace."""
     bundled = template_root / "skills"
     for skill in bundled.iterdir():
@@ -73,9 +71,7 @@ def _init_history_db(path: Path) -> None:
     # connection, so close explicitly or the file handle leaks on error.
     with contextlib.closing(sqlite3.connect(path)) as conn, conn:
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS cud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-        )
+        conn.execute("CREATE TABLE IF NOT EXISTS cud_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
 
 
 def list_agents() -> list[Path]:
@@ -91,4 +87,3 @@ def delete_agent(name: str) -> Path:
         raise FileNotFoundError(target)
     shutil.rmtree(target)
     return target
-

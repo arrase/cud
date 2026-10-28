@@ -46,14 +46,10 @@ def test_extract_content_returns_empty_without_assistant_message() -> None:
 
 
 def test_response_from_raw() -> None:
-    resp = _response_from_raw(
-        {"messages": [{"role": "assistant", "content": "answer"}]}
-    )
+    resp = _response_from_raw({"messages": [{"role": "assistant", "content": "answer"}]})
     assert resp.content == "answer"
 
-    resp_empty = _response_from_raw(
-        {"messages": [{"role": "assistant", "content": "   "}]}
-    )
+    resp_empty = _response_from_raw({"messages": [{"role": "assistant", "content": "   "}]})
     assert resp_empty.content == "The agent finished without text output."
 
 

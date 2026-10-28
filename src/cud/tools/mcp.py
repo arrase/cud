@@ -66,9 +66,7 @@ def load_mcp_config(agent_dir: Path) -> MCPConfig:
 
 def save_mcp_config(agent_dir: Path, config: MCPConfig) -> None:
     agent_dir.mkdir(parents=True, exist_ok=True)
-    (agent_dir / "mcp.json").write_text(
-        json.dumps(config.to_dict(), indent=2) + "\n", encoding="utf-8"
-    )
+    (agent_dir / "mcp.json").write_text(json.dumps(config.to_dict(), indent=2) + "\n", encoding="utf-8")
 
 
 def parse_env_pairs(pairs: Iterable[str]) -> dict[str, str]:
@@ -116,11 +114,7 @@ def _filter_tools(tools: list[Any], config: MCPConfig) -> list[Any]:
     """Return only the tools allowed by the MCP config."""
     allowed = set(config.allowed_tools) if config.allowed_tools else None
     disabled = set(config.disabled_tools)
-    return [
-        tool
-        for tool in tools
-        if (allowed is None or tool.name in allowed) and tool.name not in disabled
-    ]
+    return [tool for tool in tools if (allowed is None or tool.name in allowed) and tool.name not in disabled]
 
 
 async def load_mcp_tools_managed(agent_dir: Path) -> list[Any]:
@@ -142,4 +136,3 @@ async def load_mcp_tools_for_servers(servers: dict[str, dict[str, Any]]) -> list
         return []
     client = MultiServerMCPClient(cast("dict[str, Connection]", servers))
     return list(await client.get_tools())
-

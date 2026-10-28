@@ -63,9 +63,7 @@ class SkillsTab(QWidget):
         self.left_col = QVBoxLayout()
         self.left_col.setSpacing(8)
 
-        self.table = create_readonly_table(
-            ["Name", "Description", "Location (Path)"], stretch_column=1
-        )
+        self.table = create_readonly_table(["Name", "Description", "Location (Path)"], stretch_column=1)
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.left_col.addWidget(self.table, 1)
 
@@ -178,9 +176,7 @@ class SkillsTab(QWidget):
 
     def _on_add_clicked(self) -> None:
         """Add a new empty skill entry."""
-        name, ok = QInputDialog.getText(
-            self, "Create Skill", "New skill name (used as directory name):"
-        )
+        name, ok = QInputDialog.getText(self, "Create Skill", "New skill name (used as directory name):")
         if not ok or not name.strip():
             return
 
@@ -200,13 +196,15 @@ class SkillsTab(QWidget):
         # Re-creating a previously deleted name: drop the pending deletion.
         self._deleted_dirs.discard(dir_name)
 
-        self._skills_data.append({
-            "name": name,
-            "description": "New skill",
-            "dir_name": dir_name,
-            "body": "",
-            "metadata": {"name": name, "description": "New skill"},
-        })
+        self._skills_data.append(
+            {
+                "name": name,
+                "description": "New skill",
+                "dir_name": dir_name,
+                "body": "",
+                "metadata": {"name": name, "description": "New skill"},
+            }
+        )
         self._refresh_table()
 
         # Select the newly added row

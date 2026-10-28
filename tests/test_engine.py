@@ -10,9 +10,7 @@ from cud.engine.cli import cmd_engine_pull, cmd_engine_status
 
 
 def test_cmd_engine_status_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    data = json.dumps(
-        {"models": [{"name": "gemma4:e4b"}, {"name": "llama3:8b"}]}
-    ).encode("utf-8")
+    data = json.dumps({"models": [{"name": "gemma4:e4b"}, {"name": "llama3:8b"}]}).encode("utf-8")
     mock_resp = io.BytesIO(data)
 
     mock_urlopen = MagicMock(return_value=mock_resp)
@@ -39,4 +37,4 @@ def test_cmd_engine_pull(monkeypatch: pytest.MonkeyPatch) -> None:
 
     args = argparse.Namespace(model_name="gemma4:e4b")
     assert cmd_engine_pull(args) == 0
-    mock_run.assert_called_once_with(["ollama", "pull", "gemma4:e4b"], text=True)
+    mock_run.assert_called_once_with(["ollama", "pull", "gemma4:e4b"], check=False, text=True)

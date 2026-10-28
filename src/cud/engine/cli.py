@@ -26,7 +26,7 @@ def register_engine_commands(sub: argparse._SubParsersAction) -> None:
 
 def cmd_engine_status(args: argparse.Namespace) -> int:
     try:
-        with urllib.request.urlopen(args.base_url.rstrip("/") + "/api/tags", timeout=3) as response:
+        with urllib.request.urlopen(args.base_url.rstrip("/") + "/api/tags", timeout=3) as response:  # noqa: S310
             data = json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         console.print(f"[red]Ollama unavailable:[/red] {exc}")
@@ -37,5 +37,5 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
 
 
 def cmd_engine_pull(args: argparse.Namespace) -> int:
-    result = subprocess.run(["ollama", "pull", args.model_name], text=True)
+    result = subprocess.run(["ollama", "pull", args.model_name], check=False, text=True)  # noqa: S603, S607
     return result.returncode

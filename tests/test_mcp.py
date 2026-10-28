@@ -72,9 +72,7 @@ def test_filter_tools() -> None:
 
 
 def test_build_stdio_server_config() -> None:
-    conf = build_stdio_server_config(
-        "uvx server --debug", ["API_KEY=123", "HOST=localhost"], "stdio"
-    )
+    conf = build_stdio_server_config("uvx server --debug", ["API_KEY=123", "HOST=localhost"], "stdio")
     assert conf["command"] == "uvx"
     assert conf["args"] == ["server", "--debug"]
     assert conf["transport"] == "stdio"
@@ -201,10 +199,19 @@ def test_mcp_add_picks_free_default_name() -> None:
     agent_dir = create_agent("agent-a")
     save_mcp_config(agent_dir, MCPConfig(servers={"server2": {"command": "keepme"}}))
 
-    assert cmd_mcp_add(argparse.Namespace(
-        agent="agent-a", server_url_or_cmd="echo", name=None,
-        allowed_tool=[], transport=None, env=[],
-    )) == 0
+    assert (
+        cmd_mcp_add(
+            argparse.Namespace(
+                agent="agent-a",
+                server_url_or_cmd="echo",
+                name=None,
+                allowed_tool=[],
+                transport=None,
+                env=[],
+            )
+        )
+        == 0
+    )
 
     loaded = load_mcp_config(agent_dir)
     assert loaded.servers["server2"] == {"command": "keepme"}
@@ -213,10 +220,19 @@ def test_mcp_add_picks_free_default_name() -> None:
 
 def test_mcp_add_rejects_bad_env() -> None:
     create_agent("agent-b")
-    assert cmd_mcp_add(argparse.Namespace(
-        agent="agent-b", server_url_or_cmd="echo", name="x",
-        allowed_tool=[], transport=None, env=["NOEQUALS"],
-    )) == 2
+    assert (
+        cmd_mcp_add(
+            argparse.Namespace(
+                agent="agent-b",
+                server_url_or_cmd="echo",
+                name="x",
+                allowed_tool=[],
+                transport=None,
+                env=["NOEQUALS"],
+            )
+        )
+        == 2
+    )
 
 
 def test_save_mcp_config_creates_agent_dir(tmp_path: Path) -> None:
