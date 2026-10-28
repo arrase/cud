@@ -215,8 +215,9 @@ def test_save_settings_does_not_truncate_on_write_failure(tmp_path: Path, monkey
         raise OSError("disk full")
 
     monkeypatch.setattr("os.fdopen", boom_fdopen)
+    settings = Settings()
     with pytest.raises(OSError, match="disk full"):
-        save_settings(tmp_path, Settings())
+        save_settings(tmp_path, settings)
 
     assert path.read_text(encoding="utf-8") == before
     assert not list(tmp_path.glob(".settings.yaml.*")), "temp file must be cleaned up"

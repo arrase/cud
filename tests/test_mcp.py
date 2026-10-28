@@ -114,17 +114,16 @@ def test_cmd_mcp_add_and_list(agent_dir: Path) -> None:
 
 
 def test_cmd_mcp_add_nonexistent_agent() -> None:
+    args = argparse.Namespace(
+        agent="ghost",
+        server_url_or_cmd="echo",
+        name="x",
+        allowed_tool=[],
+        transport=None,
+        env=[],
+    )
     with pytest.raises(FileNotFoundError, match="Agent 'ghost' does not exist"):
-        cmd_mcp_add(
-            argparse.Namespace(
-                agent="ghost",
-                server_url_or_cmd="echo",
-                name="x",
-                allowed_tool=[],
-                transport=None,
-                env=[],
-            )
-        )
+        cmd_mcp_add(args)
     assert not agent_home("ghost").exists()
 
 

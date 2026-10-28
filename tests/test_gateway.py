@@ -166,8 +166,9 @@ def test_cmd_gateway_start_no_systemd(monkeypatch: pytest.MonkeyPatch, tmp_path:
 
 
 def test_cmd_gateway_start_nonexistent_agent() -> None:
+    args = argparse.Namespace(agent="missing-agent")
     with pytest.raises(FileNotFoundError, match="does not exist"):
-        cmd_gateway_start(argparse.Namespace(agent="missing-agent"))
+        cmd_gateway_start(args)
 
 
 def test_cmd_gateway_stop(monkeypatch: pytest.MonkeyPatch) -> None:

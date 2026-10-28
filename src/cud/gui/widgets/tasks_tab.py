@@ -38,6 +38,8 @@ from cud.tools.tasks import (
     save_tasks,
 )
 
+_TITLE_DATA_ERROR = "Data Error"
+
 
 def _parse_optional_int(text: str, label: str) -> int | None:
     """Parse an optional integer field; raise on a non-numeric value."""
@@ -300,10 +302,10 @@ class TasksTab(QWidget):
         name = self.input_name.text().strip()
         schedule = self.input_schedule.text().strip()
         if not name:
-            QMessageBox.critical(self, "Data Error", "Task name cannot be empty.")
+            QMessageBox.critical(self, _TITLE_DATA_ERROR, "Task name cannot be empty.")
             return
         if not schedule:
-            QMessageBox.critical(self, "Data Error", "Schedule (cron expression) is required.")
+            QMessageBox.critical(self, _TITLE_DATA_ERROR, "Schedule (cron expression) is required.")
             return
 
         if not is_valid_schedule(schedule):
@@ -315,7 +317,7 @@ class TasksTab(QWidget):
             channel_id = _parse_optional_int(self.input_channel_id.text(), "Channel ID")
             user_id = _parse_optional_int(self.input_user_id.text(), "User ID")
         except ValueError as exc:
-            QMessageBox.critical(self, "Data Error", str(exc))
+            QMessageBox.critical(self, _TITLE_DATA_ERROR, str(exc))
             return
 
         entry = self._tasks_data[self._selected_index]

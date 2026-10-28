@@ -68,8 +68,9 @@ def test_cmd_tools_install_missing_source(tmp_path: Path, agent_dir: Path) -> No
 
 
 def test_cmd_tools_install_nonexistent_agent(tmp_path: Path) -> None:
+    args = argparse.Namespace(agent="ghost", path=str(tmp_path / "x.md"))
     with pytest.raises(FileNotFoundError, match="Agent 'ghost' does not exist"):
-        cmd_tools_install(argparse.Namespace(agent="ghost", path=str(tmp_path / "x.md")))
+        cmd_tools_install(args)
     assert not agent_home("ghost").exists()
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -22,7 +21,7 @@ def anyio_backend() -> str:
 
 
 @pytest.fixture(autouse=True)
-def isolate_cud_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def isolate_cud_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Force every test to operate in its own throwaway CUD home.
 
     Autouse so a test can never create agents in the developer's real
@@ -32,7 +31,6 @@ def isolate_cud_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterato
     home = tmp_path / "cud-home"
     home.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("CUD_HOME", str(home))
-    yield
 
 
 @pytest.fixture
