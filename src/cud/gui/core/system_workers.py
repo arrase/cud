@@ -12,14 +12,9 @@ from cud.gateway.systemd import control_service, get_service_status
 class SystemWorkerSignals(QObject):
     """Signals for communicating systemd service operations to the PySide6 UI thread."""
 
-    # Arguments: (action, agent, stdout_message)
     finished = Signal(str, str, str)
-
-    # Arguments: (action, agent, error_message)
     error = Signal(str, str, str)
-
-    # Arguments: (agent, is_active, status_text)
-    status_checked = Signal(str, bool, str)
+    status_checked = Signal(str, str)
 
 
 class SystemdWorker(QRunnable):
@@ -36,7 +31,7 @@ class SystemdWorker(QRunnable):
         try:
             if self.action == "status":
                 status_text = get_service_status(self.agent)
-                self.signals.status_checked.emit(self.agent, status_text == "active", status_text)
+                self.signals.status_checked.emit(self.agent, status_text)
                 self.signals.finished.emit(self.action, self.agent, status_text)
             else:
                 msg = control_service(self.agent, self.action)

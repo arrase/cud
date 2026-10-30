@@ -15,7 +15,7 @@ def test_cmd_engine_status_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     mock_urlopen = MagicMock(return_value=mock_resp)
     mock_resp.__enter__ = lambda s: s  # type: ignore[attr-defined]
-    mock_resp.__exit__ = lambda s, *a: None  # type: ignore[attr-defined]
+    mock_resp.__exit__ = lambda _s, *_a: None  # type: ignore[attr-defined]
     monkeypatch.setattr("urllib.request.urlopen", mock_urlopen)
 
     args = argparse.Namespace(base_url="http://localhost:11434")

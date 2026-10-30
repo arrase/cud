@@ -8,12 +8,14 @@ import tempfile
 import urllib.parse
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
 import yaml
 
 # Trailing marker used to round-trip env vars through plain-text editors.
 ENV_MARKER = "env:"
+_MIN_MCP_PARTS = 2
+_T = TypeVar("_T")
 
 
 @dataclass(slots=True)
@@ -78,7 +80,7 @@ class Settings:
         return asdict(self)
 
 
-def _dataclass_from_dict(cls: type[Any], raw: Any) -> Any:
+def _dataclass_from_dict(cls: type[_T], raw: object) -> _T:
     """Build a settings dataclass from a mapping, ignoring unknown keys.
 
     Raises ``ValueError`` with an actionable message on malformed input so a
@@ -88,7 +90,7 @@ def _dataclass_from_dict(cls: type[Any], raw: Any) -> Any:
         return cls()
     if not isinstance(raw, dict):
         raise ValueError(f"'{cls.__name__}' must be a mapping, got {type(raw).__name__}")
-    valid = {f.name for f in fields(cls)}
+    valid = {f.name for f in fields(cls)}  # type: ignore[arg-type]
     known = {k: _coerce(cls.__name__, k, v) for k, v in raw.items() if k in valid}
     return cls(**known)
 
@@ -100,7 +102,7 @@ _NUMERIC_FIELDS = {
 }
 
 
-def _coerce_numeric(owner: str, name: str, value: Any) -> int | float:
+def _coerce_numeric(owner: str, name: str, value: object) -> int | float:
     if (owner, name) == ("SubAgentSettings", "context_window") and value is None:
         return 0
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -112,7 +114,7 @@ def _coerce_numeric(owner: str, name: str, value: Any) -> int | float:
     return value
 
 
-def _coerce(owner: str, name: str, value: Any) -> Any:
+def _coerce(owner: str, name: str, value: object) -> bool | int | float | str | list[str] | dict[str, str]:
     """Check that *value* matches the declared type of settings field *name*."""
     key = (owner, name)
     if key == ("RuntimeSettings", "allow_traversal"):
@@ -134,7 +136,7 @@ def _coerce(owner: str, name: str, value: Any) -> Any:
     return value
 
 
-def _subagents_from_list(raw: Any) -> list[SubAgentSettings]:
+def _subagents_from_list(raw: object) -> list[SubAgentSettings]:
     if not raw:
         return []
     if not isinstance(raw, list):
@@ -197,7 +199,7 @@ def parse_subagent_mcp_servers(text: str) -> list[SubAgentMCPServer]:
             parts = shlex.split(line)
         except ValueError:
             continue  # Unbalanced quotes: skip the line rather than corrupt the config.
-        if len(parts) < 2:
+        if len(parts) < _MIN_MCP_PARTS:
             continue
         servers.append(
             SubAgentMCPServer(

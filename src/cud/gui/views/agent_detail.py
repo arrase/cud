@@ -76,13 +76,21 @@ class AgentDetailView(QWidget):
         self.agent_name = ""
         self._active_workers: set[SystemdWorker] = set()
         self._failed_tabs: list[str] = []
+        self.loading_dialog: QProgressDialog | None = None
 
-        # Root layout
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(16, 14, 16, 12)
         self.main_layout.setSpacing(0)
 
-        # ── 1. Navigation header: Back + Title ──────────────────────────
+        self._build_header_and_toolbar()
+        self.main_layout.addWidget(create_separator())
+        self._build_body()
+        self.main_layout.addWidget(create_separator())
+        self._build_footer()
+
+        self.nav_list.setCurrentRow(0)
+
+    def _build_header_and_toolbar(self) -> None:
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
 
@@ -106,7 +114,6 @@ class AgentDetailView(QWidget):
         header.addWidget(self.title_label, 1)
         self.main_layout.addLayout(header)
 
-        # ── 2. Service lifecycle toolbar ────────────────────────────────
         svc_bar = QHBoxLayout()
         svc_bar.setContentsMargins(0, 6, 0, 8)
         svc_bar.setSpacing(8)
@@ -138,15 +145,11 @@ class AgentDetailView(QWidget):
         svc_bar.addStretch(1)
         self.main_layout.addLayout(svc_bar)
 
-        # Thin separator
-        self.main_layout.addWidget(create_separator())
-
-        # ── 3. Body: Navigation list + Content stack ────────────────────
+    def _build_body(self) -> None:
         self.body_layout = QHBoxLayout()
         self.body_layout.setContentsMargins(0, 10, 0, 0)
         self.body_layout.setSpacing(14)
 
-        # Left vertical navigation
         self.nav_list = QListWidget()
         self.nav_list.setFixedWidth(190)
         self.nav_list.setSpacing(4)
@@ -182,7 +185,6 @@ class AgentDetailView(QWidget):
         self.nav_list.addItems(self.categories)
         self.nav_list.currentRowChanged.connect(self.on_category_changed)
 
-        # Right content stack
         self.content_stack = QStackedWidget()
         self.content_stack.setStyleSheet("""
             QStackedWidget {
@@ -192,7 +194,6 @@ class AgentDetailView(QWidget):
             }
         """)
 
-        # Create tabs
         self.tab_settings = SettingsTab()
         self.tab_prompt = MarkdownFileTab("# Agent Directive\n\nWrite the agent prompt here...")
         self.tab_memory = MarkdownFileTab("# Memory Context\n\nLong-term memory records...")
@@ -201,23 +202,22 @@ class AgentDetailView(QWidget):
         self.tab_mcp = MCPTab()
         self.tab_subagents = SubagentsTab()
 
-        # Add widgets in same index order as categories list
-        self.content_stack.addWidget(self.tab_settings)  # Index 0
-        self.content_stack.addWidget(self.tab_prompt)  # Index 1
-        self.content_stack.addWidget(self.tab_memory)  # Index 2
-        self.content_stack.addWidget(self.tab_skills)  # Index 3
-        self.content_stack.addWidget(self.tab_tasks)  # Index 4
-        self.content_stack.addWidget(self.tab_mcp)  # Index 5
-        self.content_stack.addWidget(self.tab_subagents)  # Index 6
+        for tab in (
+            self.tab_settings,
+            self.tab_prompt,
+            self.tab_memory,
+            self.tab_skills,
+            self.tab_tasks,
+            self.tab_mcp,
+            self.tab_subagents,
+        ):
+            self.content_stack.addWidget(tab)
 
         self.body_layout.addWidget(self.nav_list)
         self.body_layout.addWidget(self.content_stack, 1)
-
         self.main_layout.addLayout(self.body_layout, 1)
 
-        # ── 4. Footer action bar ───────────────────────────────────────
-        self.main_layout.addWidget(create_separator())
-
+    def _build_footer(self) -> None:
         footer = QHBoxLayout()
         footer.setContentsMargins(0, 10, 0, 2)
         footer.setSpacing(12)
@@ -249,14 +249,7 @@ class AgentDetailView(QWidget):
         """)
         self.btn_save.clicked.connect(self.on_save_clicked)
         footer.addWidget(self.btn_save)
-
         self.main_layout.addLayout(footer)
-
-        # Selection state
-        self.nav_list.setCurrentRow(0)
-
-        # Transaction loading dialogue
-        self.loading_dialog: QProgressDialog | None = None
 
     def _show_loading(self, label_text: str) -> None:
         self.setEnabled(False)
@@ -340,9 +333,10 @@ class AgentDetailView(QWidget):
         for cmd in commands:
             try:
                 subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
-                return
             except OSError as exc:
                 last_error = exc
+            else:
+                return
         QMessageBox.warning(
             self,
             "Terminal not Available",
@@ -362,12 +356,12 @@ class AgentDetailView(QWidget):
         self._active_workers.add(worker)
         QThreadPool.globalInstance().start(worker)
 
-    def _on_control_finished(self, action: str, service_name: str, message: str) -> None:
+    def _on_control_finished(self, action: str, _service_name: str, message: str) -> None:
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(self, "Service Action Completed", f"Action '{action}' completed:\n\n{message}")
 
-    def _on_control_error(self, action: str, service_name: str, error_message: str) -> None:
+    def _on_control_error(self, action: str, _service_name: str, error_message: str) -> None:
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.critical(self, "Service Error", f"Failed to execute '{action}':\n\n{error_message}")
@@ -441,14 +435,14 @@ class AgentDetailView(QWidget):
                 f"Some files may have already been written; check the agent directory.\n\n{e}",
             )
 
-    def _on_save_restart_finished(self, action: str, service_name: str, message: str) -> None:
+    def _on_save_restart_finished(self, _action: str, _service_name: str, _message: str) -> None:
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.information(
             self, "Saved Successfully", f"Agent '{self.agent_name}' has been successfully saved and restarted."
         )
 
-    def _on_save_restart_error(self, action: str, service_name: str, error_message: str) -> None:
+    def _on_save_restart_error(self, _action: str, _service_name: str, error_message: str) -> None:
         self._dismiss_loading()
         self.setEnabled(True)
         QMessageBox.critical(

@@ -36,13 +36,31 @@ STATUS_CHECKING = "checking"
 HOME_PATH = Path.home()
 
 
+def _card_colors(state: QStyle.StateFlag) -> tuple[QColor, QColor]:
+    if state & QStyle.StateFlag.State_Selected:
+        return QColor("#222436"), QColor("#3F51B5")
+    if state & QStyle.StateFlag.State_MouseOver:
+        return QColor("#25252B"), QColor("#3E3E42")
+    return QColor("#1E1E1E"), QColor("#2B2B2B")
+
+
+def _led_color(status: str) -> QColor:
+    if status == "active":
+        return QColor("#2ECC71")
+    if status in ("failed", "error"):
+        return QColor("#E74C3C")
+    if status == "checking":
+        return QColor("#F1C40F")
+    return QColor("#7F8C8D")
+
+
 class AgentItemDelegate(QStyledItemDelegate):
     """Custom delegate painting premium dark-themed agent info cards with status LEDs."""
 
     def sizeHint(
         self,
-        option: QStyleOptionViewItem,
-        index: QModelIndex | QPersistentModelIndex,
+        _option: QStyleOptionViewItem,
+        _index: QModelIndex | QPersistentModelIndex,
     ) -> QSize:
         return QSize(250, 85)
 
@@ -67,49 +85,23 @@ class AgentItemDelegate(QStyledItemDelegate):
         status = str(index.data(Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET))
         home_path = str(index.data(Qt.ItemDataRole.UserRole + PATH_ROLE_OFFSET))
 
-        # Rect geometries
         card_rect = QRectF(rect.x() + 8, rect.y() + 6, rect.width() - 16, rect.height() - 12)
+        bg_color, border_color = _card_colors(option.state)
 
-        # Background card color based on states
-        is_hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
-        is_selected = bool(option.state & QStyle.StateFlag.State_Selected)
-
-        if is_selected:
-            bg_color = QColor("#222436")
-            border_color = QColor("#3F51B5")
-        elif is_hovered:
-            bg_color = QColor("#25252B")
-            border_color = QColor("#3E3E42")
-        else:
-            bg_color = QColor("#1E1E1E")
-            border_color = QColor("#2B2B2B")
-
-        # Draw card rounded background
         painter.setPen(QPen(border_color, 1.5))
         painter.setBrush(QBrush(bg_color))
         painter.drawRoundedRect(card_rect, 8.0, 8.0)
 
-        # Draw Status LED Indicator Circle
-        led_color = QColor("#7F8C8D")  # Gray for inactive / unknown
-        if status == "active":
-            led_color = QColor("#2ECC71")  # Active Green
-        elif status in ("failed", "error"):
-            led_color = QColor("#E74C3C")  # Failed Red
-        elif status == "checking":
-            led_color = QColor("#F1C40F")  # Loading Yellow
-
         led_x = card_rect.x() + 18
         led_y = card_rect.y() + (card_rect.height() / 2)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(led_color))
+        painter.setBrush(QBrush(_led_color(status)))
         painter.drawEllipse(QRectF(led_x - 5, led_y - 5, 10, 10))
 
-        # Text labels offsets
         text_x = led_x + 22
         title_y = card_rect.y() + 28
         sub_y = card_rect.y() + 48
 
-        # Draw agent name bold text
         name_font = QFont(painter.font())
         name_font.setBold(True)
         name_font.setPointSize(11)
@@ -117,7 +109,6 @@ class AgentItemDelegate(QStyledItemDelegate):
         painter.setPen(QColor("#FFFFFF"))
         painter.drawText(int(text_x), int(title_y), name)
 
-        # Draw details text
         sub_font = QFont(painter.font())
         sub_font.setBold(False)
         sub_font.setPointSize(9)
@@ -224,12 +215,12 @@ class InventoryView(QWidget):
                 item.setData(status, Qt.ItemDataRole.UserRole + STATUS_ROLE_OFFSET)
                 return
 
-    def _on_status_checked(self, generation: int, agent_name: str, is_active: bool, status_text: str) -> None:
+    def _on_status_checked(self, generation: int, agent_name: str, status_text: str) -> None:
         if generation != self._generation:
             return
         self._set_status(agent_name, status_text)
 
-    def _on_status_error(self, generation: int, action: str, agent_name: str, error_message: str) -> None:
+    def _on_status_error(self, generation: int, _action: str, agent_name: str, error_message: str) -> None:
         if generation != self._generation:
             return
         # Surface the failure instead of pretending the service is merely stopped.

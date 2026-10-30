@@ -54,7 +54,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        return args.func(args)
+        return int(args.func(args))
     except KeyboardInterrupt:
         console.print()
         console.print("[yellow]Canceled by user[/yellow]")
@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         # Expected, user-facing errors: bad names, missing agents, bad values.
         console.print(f"[red]Error:[/red] {exc}")
         return 1
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # Anything else is a bug: keep the traceback so it is actionable.
         _log.exception("Unhandled error in the '%s' command", args.command)
         console.print(f"[red]Unexpected error:[/red] {type(exc).__name__}: {exc}")

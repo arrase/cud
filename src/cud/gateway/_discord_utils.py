@@ -6,12 +6,12 @@ without circular imports.
 
 from __future__ import annotations
 
-from typing import Any
+import discord
 
 DISCORD_MAX_LENGTH = 1900
 
 
-async def send_response(message: Any, content: str) -> None:
+async def send_response(message: discord.Message, content: str) -> None:
     """Reply in guilds, send directly in DMs."""
     if message.guild is not None:
         await message.reply(content)

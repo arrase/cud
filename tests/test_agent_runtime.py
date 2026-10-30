@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -78,7 +79,7 @@ async def test_runtime_invoke_triggers_reload_if_graph_none(agent_dir: Path) -> 
     runtime = AgentRuntime(agent_dir=agent_dir)
     assert runtime.graph is None
 
-    async def fake_reload_locked(self):
+    async def fake_reload_locked(self: AgentRuntime) -> None:
         self.graph = MagicMock()
         self.graph.ainvoke = AsyncMock(return_value={"messages": [{"role": "ai", "content": "Done"}]})
 
@@ -121,7 +122,7 @@ async def test_runtime_undo_sends_remove_messages(agent_dir: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_undo_actually_removes_messages_from_state(agent_dir: Path) -> None:
+async def test_undo_actually_removes_messages_from_state() -> None:
     """Regression: the `messages` channel is reduced by `add_messages`, which
     merges by id. Passing the kept messages back therefore re-adds them, so
     undo must send `RemoveMessage` ids instead."""
@@ -147,7 +148,7 @@ async def test_runtime_undo_triggers_reload_if_graph_none(agent_dir: Path) -> No
     runtime = AgentRuntime(agent_dir=agent_dir)
     assert runtime.graph is None
 
-    async def fake_reload_locked(self):
+    async def fake_reload_locked(self: AgentRuntime) -> None:
         self.graph = MagicMock()
         self.graph.aget_state = AsyncMock(return_value=MagicMock(values={"messages": []}))
 
@@ -260,7 +261,12 @@ async def test_concurrent_invoke_builds_graph_once(agent_dir: Path) -> None:
     runtime = AgentRuntime(agent_dir=agent_dir)
     builds = 0
 
-    async def fake_build(self, settings, prompt, stack):
+    async def fake_build(
+        _self: AgentRuntime,
+        _settings: object,
+        _prompt: str,
+        _stack: object,
+    ) -> MagicMock:
         nonlocal builds
         builds += 1
         await asyncio.sleep(0)
@@ -286,7 +292,7 @@ async def test_reload_keeps_sqlite_checkpointer_open(agent_dir: Path) -> None:
     runtime = AgentRuntime(agent_dir=agent_dir)
     captured_saver = None
 
-    def capture_agent(**kwargs):
+    def capture_agent(**kwargs: Any) -> MagicMock:
         nonlocal captured_saver
         captured_saver = kwargs["checkpointer"]
         return MagicMock()

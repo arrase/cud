@@ -17,6 +17,8 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from rich.table import Table
 
 _serializer = JsonPlusSerializer()
+_MAX_SNIPPET_LEN = 300
+_MAX_SNIPPETS = 4
 
 
 class HistoryError(RuntimeError):
@@ -55,7 +57,7 @@ def format_iso_timestamp(ts: str) -> str:
     return dt.strftime("%Y-%m-%d %H:%M UTC")
 
 
-def extract_text(content: Any) -> str:
+def extract_text(content: object) -> str:
     """Convert agent payload content into plain text."""
     if isinstance(content, str):
         return content.strip()
@@ -71,7 +73,7 @@ def extract_text(content: Any) -> str:
     return str(content)
 
 
-def message_role_and_text(msg: Any) -> tuple[str, str]:
+def message_role_and_text(msg: object) -> tuple[str, str]:
     """Extract role and stripped text content from a message object or dict."""
     if isinstance(msg, dict):
         role = msg.get("type") or msg.get("role")
@@ -179,7 +181,7 @@ def load_past_conversations(
 
 
 def _format_snippet(role: str, text: str) -> str:
-    truncated = text if len(text) <= 300 else f"{text[:297]}..."
+    truncated = text if len(text) <= _MAX_SNIPPET_LEN else f"{text[: _MAX_SNIPPET_LEN - 3]}..."
     role_label = "User" if role in ("human", "user") else "Assistant"
     return f"[{role_label}]: {truncated}"
 
@@ -206,7 +208,7 @@ def _score_conversation(data: dict[str, Any], terms: list[str]) -> tuple[int, li
         term_hits = sum(text.lower().count(t) for t in terms)
         if term_hits > 0:
             match_count += term_hits
-            if len(snippets) < 4:
+            if len(snippets) < _MAX_SNIPPETS:
                 snippets.append(_format_snippet(role, text))
 
     if date_hits and not snippets:

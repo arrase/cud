@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 import discord
 from discord import app_commands
@@ -21,7 +20,7 @@ _log = logging.getLogger(__name__)
 
 
 class DiscordGateway:
-    def __init__(self, agent: str, *, verbose: bool = False):
+    def __init__(self, agent: str, *, verbose: bool = False) -> None:
         self.agent = agent
         self.agent_dir = agent_home(agent)
         self.settings = load_settings(self.agent_dir)
@@ -50,7 +49,7 @@ class DiscordGateway:
 
     # -- Session management --------------------------------------------------
 
-    def _get_thread_id(self, message_or_channel: Any) -> str:
+    def _get_thread_id(self, message_or_channel: object) -> str:
         """Map a Discord channel/thread/message object to a stable LangGraph thread_id."""
         channel = getattr(message_or_channel, "channel", message_or_channel)
         guild = getattr(channel, "guild", None)
@@ -94,7 +93,8 @@ class DiscordGateway:
             for chunk in chunks[1:]:
                 await message.channel.send(chunk)
 
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
+            # Boundary handler: keep the Discord gateway alive on any runtime or network failure.
             _log.exception("Error handling message in thread %s", thread_id)
             await self._notify_error(message, f"`{type(exc).__name__}`: {str(exc)[:1600]}")
 
@@ -109,7 +109,7 @@ class DiscordGateway:
         """
         try:
             await send_response(message, f"Cud error: {detail}")
-        except Exception:
+        except Exception:  # noqa: BLE001
             _log.exception("Failed to deliver the error message to Discord")
 
     # -- Slash commands ------------------------------------------------------

@@ -8,7 +8,7 @@ import asyncio
 from cud.tui.app import run_tui
 
 
-def register_tui_commands(sub: argparse._SubParsersAction) -> None:
+def register_tui_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     tui = sub.add_parser("tui", help="Run agent in local TUI mode")
     tui.add_argument("agent")
     tui.add_argument("--thread-id", default="", help="Thread ID for the conversation (default: new unique session)")
