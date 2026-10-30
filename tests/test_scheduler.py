@@ -260,7 +260,7 @@ async def test_run_no_tasks_then_reload(tmp_path: Path) -> None:
         call_count += 1
         if call_count == 1:
             return True
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     scheduler._reload_event.wait = fake_wait
 
@@ -288,12 +288,12 @@ async def test_run_timeout_executes_task(tmp_path: Path) -> None:
 
     call_count = 0
 
-    def fake_next_scheduled(tasks):
+    def fake_next_scheduled(_tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             return task, 0.001
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     with (
         patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled),
@@ -322,13 +322,13 @@ async def test_run_reload_before_timeout(tmp_path: Path) -> None:
 
     call_count = 0
 
-    def fake_next_scheduled(tasks):
+    def fake_next_scheduled(_tasks: list[TaskCard]) -> tuple[TaskCard | None, float]:
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             scheduler.reload()  # sets _reload_event so wait_for returns immediately
             return task, 100.0
-        raise asyncio.CancelledError()
+        raise asyncio.CancelledError
 
     with (
         patch("cud.gateway.scheduler._next_scheduled", side_effect=fake_next_scheduled),

@@ -71,7 +71,7 @@ async def _load_mcp_tools(
         return []
     try:
         return await load_mcp_tools_for_servers(servers)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         # An unreachable MCP server must not prevent the agent from starting.
         _log.warning("Subagent '%s': MCP tools failed to load: %s", subagent_name, exc)
         return []

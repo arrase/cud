@@ -31,7 +31,7 @@ class MCPConfig:
         }
 
 
-def _string_list(raw: Any, key: str) -> list[str]:
+def _string_list(raw: object, key: str) -> list[str]:
     if raw is None:
         return []
     if not isinstance(raw, list) or not all(isinstance(v, str) for v in raw):
@@ -39,7 +39,7 @@ def _string_list(raw: Any, key: str) -> list[str]:
     return list(raw)
 
 
-def _server_map(raw: Any) -> dict[str, dict[str, Any]]:
+def _server_map(raw: object) -> dict[str, dict[str, Any]]:
     if raw is None:
         return {}
     if not isinstance(raw, dict):

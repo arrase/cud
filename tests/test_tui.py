@@ -174,21 +174,21 @@ async def test_run_tui_prompt_loop(agent_dir: Path) -> None:
     inputs = ["", "/new", "hello", "fail", "exit_now"]
     input_iter = iter(inputs)
 
-    async def fake_prompt_async(prompt_msg):
+    async def fake_prompt_async(_prompt_msg: object) -> str:
         try:
             val = next(input_iter)
-            if val == "exit_now":
-                raise EOFError()
-            return val
         except StopIteration:
-            raise EOFError() from None
+            raise EOFError from None
+        if val == "exit_now":
+            raise EOFError
+        return val
 
     with (
         patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance),
         patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async),
         patch("cud.tui.app.handle_command", AsyncMock(return_value=False)),
     ):
-        code = await run_tui("test-agent", thread_id="th-fixed")
+        code = await run_tui(agent_dir.name, thread_id="th-fixed")
         assert code == 0
         assert mock_runtime_instance.invoke.await_count == 2
 
@@ -200,14 +200,14 @@ async def test_run_tui_slash_quit(agent_dir: Path) -> None:
     mock_runtime_instance.__aexit__.return_value = None
     mock_runtime_instance.load_past_prompts = MagicMock(return_value=[])
 
-    async def fake_prompt_async(prompt_msg):
+    async def fake_prompt_async(_prompt_msg: object) -> str:
         return "/quit"
 
     with (
         patch("cud.tui.app.AgentRuntime", return_value=mock_runtime_instance),
         patch("prompt_toolkit.PromptSession.prompt_async", side_effect=fake_prompt_async),
     ):
-        code = await run_tui("test-agent")
+        code = await run_tui(agent_dir.name)
         assert code == 0
 
 
@@ -266,7 +266,7 @@ async def test_run_tui_does_not_block_on_history_load(agent_dir: Path) -> None:
         patch("cud.tui.app.asyncio.to_thread", wraps=asyncio.to_thread) as to_thread,
     ):
         session_cls.return_value.prompt_async = AsyncMock(side_effect=EOFError)
-        assert await run_tui("test-agent") == 0
+        assert await run_tui(agent_dir.name) == 0
     assert to_thread.call_count >= 1
 
 

@@ -89,7 +89,7 @@ def _welcome_banner(agent_name: str, model_name: str, thread_id: str, console: C
 
 def _agent_response(content: str, agent_name: str, elapsed: float, console: Console) -> None:
     """Render the agent's response with a left-border panel."""
-    ts = datetime.now().strftime("%H:%M:%S")
+    ts = datetime.now().astimezone().strftime("%H:%M:%S")
 
     console.print(
         Text.assemble(
@@ -306,7 +306,8 @@ async def run_tui(agent_name: str, thread_id: str = "") -> int:
                 console.print()
                 _system_message("Interrupted.", _STYLE_DIM, console)
                 break
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
+                # Top-level interactive loop boundary: display error and continue prompting.
                 _log.exception("Unhandled error in the TUI loop")
                 _system_message(f"Error: {exc}", _STYLE_ERROR, console)
 

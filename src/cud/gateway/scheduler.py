@@ -62,7 +62,8 @@ class TaskScheduler:
                 except TimeoutError:
                     await self._execute(task)
 
-            except Exception:
+            except Exception:  # noqa: BLE001
+                # Top-level scheduler loop must survive unexpected task or runtime errors.
                 _log.exception("Scheduler loop error; retrying in 30s")
                 await asyncio.sleep(30)
 
@@ -86,7 +87,8 @@ class TaskScheduler:
                 response = await runtime.invoke(task.prompt)
             for chunk in split_message(response.content):
                 await target.send(chunk)
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # Isolate single-task failures so the scheduler loop continues.
             _log.exception("Task '%s' failed", task.name)
 
     async def _resolve_target(self, task: TaskCard) -> Messageable | None:

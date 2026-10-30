@@ -104,7 +104,12 @@ class TasksTab(QWidget):
         # --- Right Column: Editor Form ---
         self.right_col = QVBoxLayout()
         self.right_col.setSpacing(8)
+        self.right_col.addWidget(self._build_editor_group())
+        self.split_layout.addLayout(self.right_col, 2)
 
+        self.main_layout.addLayout(self.split_layout, 1)
+
+    def _build_editor_group(self) -> QGroupBox:
         self.group_editor = QGroupBox("Task Editor")
         self.form_layout = QFormLayout(self.group_editor)
 
@@ -140,11 +145,7 @@ class TasksTab(QWidget):
 
         self.btn_update = create_action_button("💾 Update Task Data", ACTION_BTN_UPDATE, self._on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
-
-        self.right_col.addWidget(self.group_editor)
-        self.split_layout.addLayout(self.right_col, 2)
-
-        self.main_layout.addLayout(self.split_layout, 1)
+        return self.group_editor
 
     def load_data(self, agent_dir: Path) -> None:
         """Scan tasks directory and populate in-memory data structures."""

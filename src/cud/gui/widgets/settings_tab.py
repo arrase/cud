@@ -29,10 +29,14 @@ class SettingsTab(QWidget):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(16)
 
-        # Cache settings object
         self.current_settings = Settings()
 
-        # 1. Inferencia / LLM Config
+        self.main_layout.addWidget(self._build_model_group())
+        self.main_layout.addWidget(self._build_runtime_group())
+        self.main_layout.addWidget(self._build_gateway_group())
+        self.main_layout.addStretch(1)
+
+    def _build_model_group(self) -> QGroupBox:
         self.group_model = QGroupBox("Inference Configuration (Ollama)")
         self.model_layout = QFormLayout(self.group_model)
 
@@ -61,10 +65,9 @@ class SettingsTab(QWidget):
         self.model_layout.addRow("Base URL:", self.input_base_url)
         self.model_layout.addRow("Temperature:", self.input_temp)
         self.model_layout.addRow("Context Window:", self.input_ctx)
+        return self.group_model
 
-        self.main_layout.addWidget(self.group_model)
-
-        # 2. Runtime
+    def _build_runtime_group(self) -> QGroupBox:
         self.group_runtime = QGroupBox("Runtime Options")
         self.runtime_layout = QFormLayout(self.group_runtime)
 
@@ -72,9 +75,9 @@ class SettingsTab(QWidget):
         self.chk_traversal.setChecked(True)
 
         self.runtime_layout.addRow("", self.chk_traversal)
-        self.main_layout.addWidget(self.group_runtime)
+        return self.group_runtime
 
-        # 3. Discord Gateway
+    def _build_gateway_group(self) -> QGroupBox:
         self.group_gateway = QGroupBox("Discord Gateway Bot Config")
         self.gateway_layout = QFormLayout(self.group_gateway)
 
@@ -86,7 +89,6 @@ class SettingsTab(QWidget):
         self.input_gw_mode.setReadOnly(True)
         self.input_gw_mode.setStyleSheet(_READONLY_STYLE)
 
-        # Discord Token field with masked visibility toggle
         token_container = QWidget()
         token_layout = QHBoxLayout(token_container)
         token_layout.setContentsMargins(0, 0, 0, 0)
@@ -105,11 +107,9 @@ class SettingsTab(QWidget):
         self.gateway_layout.addRow("Gateway Provider:", self.input_gw_provider)
         self.gateway_layout.addRow("Mode:", self.input_gw_mode)
         self.gateway_layout.addRow("Discord Token:", token_container)
+        return self.group_gateway
 
-        self.main_layout.addWidget(self.group_gateway)
-        self.main_layout.addStretch(1)
-
-    def on_show_token_toggled(self, state: int) -> None:
+    def on_show_token_toggled(self, _state: int) -> None:
         if self.chk_show_token.isChecked():
             self.input_token.setEchoMode(QLineEdit.EchoMode.Normal)
         else:

@@ -14,7 +14,7 @@ from cud.gateway.run import run_gateway
 console = Console()
 
 
-def register_gateway_commands(sub: argparse._SubParsersAction) -> None:
+def register_gateway_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     gateway = sub.add_parser("gateway", help="Manage gateway daemon")
     gateway_sub = gateway.add_subparsers(dest="gateway_command", required=True)
     setup = gateway_sub.add_parser("setup", help="Configure gateway credentials")

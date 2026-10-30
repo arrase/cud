@@ -8,7 +8,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from croniter import croniter
 
@@ -42,7 +42,8 @@ def discover_tasks(tasks_dir: Path) -> list[TaskCard]:
     for task_file in sorted(tasks_dir.glob("*/TASK.md")):
         try:
             card = _parse_task_file(task_file)
-        except Exception:
+        except Exception:  # noqa: BLE001
+            # A single malformed or unreadable task file must not abort discovery.
             _log.warning("Skipping unreadable task file %s", task_file, exc_info=True)
             continue
         if card is not None:
@@ -75,12 +76,12 @@ def _parse_task_file(task_file: Path) -> TaskCard | None:
     )
 
 
-def _int_or_none(value: Any) -> int | None:
-    if value is None or isinstance(value, bool):
+def _int_or_none(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except ValueError:
         return None
 
 
@@ -91,7 +92,7 @@ def next_run(schedule: str, now: datetime) -> datetime | None:
     and the GUI, so an unschedulable expression is handled identically everywhere.
     """
     try:
-        return croniter(schedule, now).get_next(datetime)
+        return cast("datetime", croniter(schedule, now).get_next(datetime))
     except (ValueError, KeyError):
         return None
 

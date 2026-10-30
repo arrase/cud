@@ -20,7 +20,7 @@ from cud.gateway import systemd
 console = Console()
 
 
-def register_agent_commands(sub: argparse._SubParsersAction) -> None:
+def register_agent_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     agent = sub.add_parser("agent", help="Manage agents")
     agent_sub = agent.add_subparsers(dest="agent_command", required=True)
     create = agent_sub.add_parser("create", help="Create an agent")

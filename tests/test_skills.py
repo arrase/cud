@@ -2,6 +2,7 @@ import argparse
 import io
 import urllib.error
 from pathlib import Path
+from typing import Self
 from unittest.mock import patch
 
 import pytest
@@ -62,7 +63,7 @@ def test_discover_skills_without_frontmatter(tmp_path: Path) -> None:
 
 
 def test_cmd_tools_install_missing_source(tmp_path: Path, agent_dir: Path) -> None:
-    args = argparse.Namespace(agent="test-agent", path=str(tmp_path / "missing.md"))
+    args = argparse.Namespace(agent=agent_dir.name, path=str(tmp_path / "missing.md"))
     exit_code = cmd_tools_install(args)
     assert exit_code == 2
 
@@ -75,7 +76,7 @@ def test_cmd_tools_install_nonexistent_agent(tmp_path: Path) -> None:
 
 
 def test_cmd_tools_list(agent_dir: Path) -> None:
-    assert cmd_tools_list(argparse.Namespace(agent="test-agent")) == 0
+    assert cmd_tools_list(argparse.Namespace(agent=agent_dir.name)) == 0
     assert cmd_tools_list(argparse.Namespace(agent="no-skills-agent")) == 0
 
 
@@ -110,7 +111,7 @@ def test_cmd_tools_install_already_exists(tmp_path: Path, agent_dir: Path) -> No
     source_dir.mkdir()
     (source_dir / "SKILL.md").write_text("# Skill", encoding="utf-8")
 
-    args = argparse.Namespace(agent="test-agent", path=str(source_dir))
+    args = argparse.Namespace(agent=agent_dir.name, path=str(source_dir))
     assert cmd_tools_install(args) == 0
     # Installing again should fail with code 2
     assert cmd_tools_install(args) == 2
@@ -133,7 +134,7 @@ def test_first_non_empty_line_only_headers() -> None:
 def test_cmd_tools_install_url_success(agent_dir: Path) -> None:
     mock_resp = io.BytesIO(b"# Remote skill content\n")
     mock_resp.__enter__ = lambda s: s
-    mock_resp.__exit__ = lambda s, *a: None
+    mock_resp.__exit__ = lambda _s, *_a: None
 
     with patch("urllib.request.urlopen", return_value=mock_resp):
         args = argparse.Namespace(
@@ -161,7 +162,7 @@ def test_cmd_tools_install_url_already_exists(agent_dir: Path) -> None:
 def test_cmd_tools_install_url_download_error(agent_dir: Path) -> None:
     with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network error")):
         args = argparse.Namespace(
-            agent="test-agent",
+            agent=agent_dir.name,
             path="https://example.com/skills/failing_skill.md",
         )
         assert cmd_tools_install(args) == 1
@@ -274,13 +275,13 @@ def test_remote_install_rejects_oversized_or_binary_payload(
         def read(self, *_args: object) -> bytes:
             return payload
 
-        def __enter__(self):
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *_exc: object) -> None:
             return None
 
-    monkeypatch.setattr("cud.tools.cli.urllib.request.urlopen", lambda *a, **k: FakeResponse())
+    monkeypatch.setattr("cud.tools.cli.urllib.request.urlopen", lambda *_a, **_k: FakeResponse())
     args = argparse.Namespace(agent="big-agent", path="https://example.com/skill.md")
     assert cmd_tools_install(args) == 1
 

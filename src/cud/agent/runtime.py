@@ -12,9 +12,11 @@ from uuid import uuid4
 from deepagents import create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend, LocalShellBackend
 from deepagents.middleware.summarization import create_summarization_tool_middleware
+from langchain_core.messages import RemoveMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-from langgraph.graph.message import RemoveMessage
+from langgraph.graph.state import CompiledStateGraph
 
 from cud.agent.episodic_memory import (
     create_search_past_conversations_tool,
@@ -53,7 +55,7 @@ class AgentRuntime:
     # `/model` slash command in a channel with no prior message.
     settings: Settings = field(default_factory=Settings, init=False)
     prompt: str = field(default="", init=False)
-    graph: Any = field(default=None, init=False, repr=False)
+    graph: CompiledStateGraph[Any, Any, Any, Any] | None = field(default=None, init=False, repr=False)
     _exit_stack: contextlib.AsyncExitStack = field(default_factory=contextlib.AsyncExitStack, init=False, repr=False)
     _build_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
 
@@ -97,7 +99,7 @@ class AgentRuntime:
         self.graph = graph
         await old_stack.aclose()
 
-    async def _ensure_graph(self) -> Any:
+    async def _ensure_graph(self) -> CompiledStateGraph[Any, Any, Any, Any]:
         """Return the live graph, building it exactly once even under concurrency."""
         if self.graph is not None:
             return self.graph
@@ -106,14 +108,14 @@ class AgentRuntime:
             # while we were waiting, and rebuilding would churn the checkpointer.
             if self.graph is None:
                 await self._reload_locked()
-            return self.graph
+            return self.graph  # type: ignore[return-value]
 
     async def _build_graph(
         self,
         settings: Settings,
         prompt: str,
         stack: contextlib.AsyncExitStack,
-    ) -> Any:
+    ) -> CompiledStateGraph[Any, Any, Any, Any]:
         model = ChatOllama(
             model=settings.model.name,
             base_url=settings.model.base_url,
@@ -154,19 +156,19 @@ class AgentRuntime:
 
         return create_deep_agent(**kwargs)
 
-    async def _sqlite_checkpointer(self, stack: contextlib.AsyncExitStack) -> Any:
+    async def _sqlite_checkpointer(self, stack: contextlib.AsyncExitStack) -> AsyncSqliteSaver:
         saver = AsyncSqliteSaver.from_conn_string(str(self.history_db_path))
         return await stack.enter_async_context(saver)
 
     async def invoke(self, message: str) -> RuntimeResponse:
         graph = await self._ensure_graph()
-        config = {"configurable": {"thread_id": self.thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": self.thread_id}}
         raw = await graph.ainvoke({"messages": [{"role": "user", "content": message}]}, config)
         return _response_from_raw(raw)
 
     async def undo_last_exchange(self) -> str:
         graph = await self._ensure_graph()
-        config = {"configurable": {"thread_id": self.thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": self.thread_id}}
         state = await graph.aget_state(config)
         messages = list(state.values.get("messages", []))
         kept = _drop_last_exchange(messages)

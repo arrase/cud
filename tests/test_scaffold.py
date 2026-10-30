@@ -1,5 +1,6 @@
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -108,7 +109,7 @@ def test_init_history_db_closes_connection(tmp_path: Path, monkeypatch: pytest.M
     opened: list[sqlite3.Connection] = []
     real_connect = sqlite3.connect
 
-    def spy(path, *args, **kwargs):
+    def spy(path: Path | str, *args: Any, **kwargs: Any) -> sqlite3.Connection:
         conn = real_connect(path, *args, **kwargs)
         opened.append(conn)
         return conn

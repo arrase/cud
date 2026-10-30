@@ -13,7 +13,7 @@ from rich.console import Console
 console = Console()
 
 
-def register_engine_commands(sub: argparse._SubParsersAction) -> None:
+def register_engine_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     engine = sub.add_parser("engine", help="Manage Ollama")
     engine_sub = engine.add_subparsers(dest="engine_command", required=True)
     engine_status = engine_sub.add_parser("status", help="Check Ollama status")

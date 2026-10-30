@@ -82,7 +82,16 @@ class MCPTab(QWidget):
         # Right Column: Editor Form
         self.right_col = QVBoxLayout()
         self.right_col.setSpacing(8)
+        self.right_col.addWidget(self._build_editor_group())
+        self.split_layout.addLayout(self.right_col, 2)
 
+        self.main_layout.addLayout(self.split_layout, 1)
+        self.main_layout.addWidget(self._build_global_group())
+
+        # Keep track of the current selected row index
+        self.selected_server_name = ""
+
+    def _build_editor_group(self) -> QGroupBox:
         self.group_editor = QGroupBox("Server Editor")
         self.form_layout = QFormLayout(self.group_editor)
 
@@ -113,13 +122,9 @@ class MCPTab(QWidget):
 
         self.btn_update = create_action_button("💾 Update Server Data", ACTION_BTN_UPDATE, self.on_update_clicked)
         self.form_layout.addRow("", self.btn_update)
+        return self.group_editor
 
-        self.right_col.addWidget(self.group_editor)
-        self.split_layout.addLayout(self.right_col, 2)
-
-        self.main_layout.addLayout(self.split_layout, 1)
-
-        # Bottom section: Global allowed/disabled tools lists
+    def _build_global_group(self) -> QGroupBox:
         self.group_global = QGroupBox("Global Tool Control (Optional)")
         self.global_layout = QFormLayout(self.group_global)
 
@@ -131,11 +136,7 @@ class MCPTab(QWidget):
 
         self.global_layout.addRow("Allowed Tools (Commas):", self.input_allowed)
         self.global_layout.addRow("Disabled Tools (Commas):", self.input_disabled)
-
-        self.main_layout.addWidget(self.group_global)
-
-        # Keep track of the current selected row index
-        self.selected_server_name = ""
+        return self.group_global
 
     def on_transport_changed(self, transport: str) -> None:
         """Enable or disable input fields depending on transport mode."""

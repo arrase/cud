@@ -32,7 +32,7 @@ def discover_skills(skills_dir: Path) -> list[SkillCard]:
         try:
             text = skill_file.read_text(encoding="utf-8")
             metadata, body = parse_frontmatter(text)
-        except Exception:
+        except (OSError, ValueError):
             _log.warning("Skipping unreadable skill file %s", skill_file, exc_info=True)
             continue
         name = metadata.get("name") or skill_file.parent.name

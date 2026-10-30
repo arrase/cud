@@ -16,8 +16,8 @@ from cud.tools.tasks import (
 
 def test_int_or_none() -> None:
     assert _int_or_none(None) is None
-    assert _int_or_none(True) is None
-    assert _int_or_none(False) is None
+    for flag in (True, False):
+        assert _int_or_none(flag) is None
     assert _int_or_none("123") == 123
     assert _int_or_none(456) == 456
     assert _int_or_none("invalid") is None

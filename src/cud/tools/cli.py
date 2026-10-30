@@ -36,7 +36,7 @@ _MAX_SKILL_BYTES = 512 * 1024
 # ---------------------------------------------------------------------------
 
 
-def register_mcp_commands(sub: argparse._SubParsersAction) -> None:
+def register_mcp_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     mcp = sub.add_parser("mcp", help="Manage MCP servers")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
     mcp_add = mcp_sub.add_parser("add", help="Add an MCP server")
@@ -93,7 +93,7 @@ def cmd_mcp_list(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def register_tools_commands(sub: argparse._SubParsersAction) -> None:
+def register_tools_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     tools = sub.add_parser("tools", help="Manage tools")
     tools_sub = tools.add_subparsers(dest="tools_command", required=True)
     tools_list = tools_sub.add_parser("list", help="List installed skills")
@@ -184,7 +184,7 @@ def _install_remote(url: str, skills_dir: Path) -> int:
 # ---------------------------------------------------------------------------
 
 
-def register_tasks_commands(sub: argparse._SubParsersAction) -> None:
+def register_tasks_commands(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     task = sub.add_parser("task", help="Manage periodic tasks")
     task_sub = task.add_subparsers(dest="task_command", required=True)
     task_list = task_sub.add_parser("list", help="List scheduled tasks")
