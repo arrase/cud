@@ -38,12 +38,12 @@ dev = [
   "mypy>=2.4.0",
   "pytest>=9.2.0",
   "pytest-cov>=7.1.0",
-  "anyio>=4.15.1",
+  "anyio>=4.16.0",
 ]
 test = [
   "pytest>=9.2.0",
   "pytest-cov>=7.1.0",
-  "anyio>=4.15.1",
+  "anyio>=4.16.0",
 ]
 
 [tool.hatch.build.targets.wheel]
