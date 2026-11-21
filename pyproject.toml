@@ -34,7 +34,7 @@ cud-gui = "cud.gui:main"
 
 [project.optional-dependencies]
 dev = [
-  "ruff>=0.17.3",
+  "ruff>=0.17.4",
   "mypy>=2.4.0",
   "pytest>=9.2.0",
   "pytest-cov>=7.1.0",
